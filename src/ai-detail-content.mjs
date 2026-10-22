@@ -24,10 +24,7 @@ export class DetailContentBrowser {
       if (await isLoginPage(landing)) throw new Error("内容管理后台登录态失效");
       const cards = landing.locator(this.config.selectors.siteCardSelector);
       const card = cards.filter({ hasText: this.config.siteName }).first();
-      const deadline = Date.now() + this.config.timeouts.blockRenderMs;
-      while (Date.now() < deadline && !(await card.isVisible().catch(() => false))) {
-        await landing.waitForTimeout(250);
-      }
+      await card.waitFor({ state: "visible", timeout: this.config.timeouts.blockRenderMs }).catch(() => {});
       if (!(await card.isVisible().catch(() => false))) {
         throw new Error(`内容管理后台中未找到站点 ${this.config.siteName}`);
       }

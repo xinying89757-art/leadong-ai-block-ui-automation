@@ -122,8 +122,8 @@ export class AiPagedAutomation extends AiBlockAutomation {
         const text = await card.innerText().catch(() => "");
         if (!text.includes(record.type)) continue;
         const insertCandidates = [
-          card.getByRole("button", { name: /插入/ }).first(),
           card.locator(this.config.selectors.aiHistoryInsertSelector).first(),
+          card.getByRole("button", { name: /插入/ }).first(),
           card.getByText(/插入/).first(),
         ];
         let insert = null;
@@ -168,10 +168,10 @@ export class AiPagedAutomation extends AiBlockAutomation {
     const next = await (async () => {
       const deadline = Date.now() + this.config.timeouts.blockRenderMs;
       while (Date.now() < deadline) {
-        const moduleControl = await firstVisibleControl((scope) => scope.getByText("应用模块", { exact: true }).first());
-        if (moduleControl && await moduleControl.isEnabled().catch(() => true)) return { mode: "module", control: moduleControl };
         const moduleButton = await firstVisibleControl((scope) => scope.locator("button").filter({ hasText: "应用模块" }).first());
         if (moduleButton && await moduleButton.isEnabled().catch(() => true)) return { mode: "module", control: moduleButton };
+        const moduleControl = await firstVisibleControl((scope) => scope.getByText("应用模块", { exact: true }).first());
+        if (moduleControl && await moduleControl.isEnabled().catch(() => true)) return { mode: "module", control: moduleControl };
         const apply = await firstVisibleControl((scope) => scope.locator(this.config.selectors.aiApplySelector).filter({ hasText: /^应用$/ }).first());
         if (apply && await apply.isEnabled().catch(() => false)) return { mode: "final", control: apply };
         await this.editor.page.waitForTimeout(250);

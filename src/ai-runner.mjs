@@ -1,3 +1,4 @@
+import { pollUntil } from "./wait-utils.mjs";
 import { aiPageDescriptor } from "./config.mjs";
 import {
   AiStateStore,
@@ -20,18 +21,7 @@ function deadlineAfter(ms) {
 }
 
 async function waitUntil(check, timeoutMs, intervalMs = 250, label = "条件") {
-  const deadline = deadlineAfter(timeoutMs);
-  let lastError;
-  while (Date.now() < deadline) {
-    try {
-      const result = await check();
-      if (result) return result;
-    } catch (error) {
-      lastError = error;
-    }
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-  }
-  throw new Error(`${label}等待超时${lastError ? `：${lastError.message}` : ""}`);
+  return pollUntil(check, { timeoutMs, intervalMs, message: `${label}等待超时`, retryOnError: true });
 }
 
 async function visible(locator) {
@@ -321,14 +311,17 @@ export class AiBlockAutomation {
 
   async selectGenerationMode(frame) {
     const trigger = frame.locator(this.config.selectors.aiTierTriggerSelector);
-    if ((await trigger.innerText().catch(() => "")).trim() !== this.aiConfig.generationMode) {
+    const configured = this.config.ai.generationModes?.find(item => item.label === this.aiConfig.generationMode || item.aliases?.includes(this.aiConfig.generationMode));
+    const labels = [...new Set([configured?.label, this.aiConfig.generationMode, ...(configured?.aliases ?? [])].filter(Boolean))];
+    const current = (await trigger.innerText().catch(() => "")).trim();
+    if (!labels.some(label => current.includes(label))) {
       await trigger.click();
-      const choice = await firstVisible([
-        frame.getByRole("option", { name: this.aiConfig.generationMode, exact: true }),
-        frame.locator(".tier-option").filter({ hasText: this.aiConfig.generationMode }).first(),
-        exactText(frame, this.aiConfig.generationMode),
-      ]);
-      if (!choice) throw new Error(`未找到 AI 生成模式 ${this.aiConfig.generationMode}`);
+      const choice = await firstVisible(labels.flatMap(label => [
+        frame.getByRole("option", { name: label, exact: true }),
+        frame.locator(".tier-option").filter({ hasText: label }).first(),
+        exactText(frame, label),
+      ]));
+      if (!choice) throw new Error(`未找到 AI 生成模式 ${labels.join(" / ")}`);
       await choice.click();
     }
   }

@@ -86,7 +86,6 @@
     "@midscene/shared": "^1.13.1",
     "@midscene/web": "1.13.1",
     "@playwright/test": "1.61.1",
-    "exceljs": "4.4.0",
     "playwright": "1.61.1"
   },
   "overrides": {

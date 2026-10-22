@@ -1,10 +1,12 @@
+import { sleep } from "./wait-utils.mjs";
+
 export async function waitForCategoryTreeReady(readSnapshot, {
   timeoutMs = 20000,
   minWaitMs = 5000,
   stableMs = 1000,
   intervalMs = 200,
   now = Date.now,
-  delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+  delay = sleep,
 } = {}) {
   const started = now();
   let stableSince = null;

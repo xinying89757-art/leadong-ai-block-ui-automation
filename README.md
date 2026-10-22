@@ -8,7 +8,7 @@
 
 - 15 种非详情 AI 区块，分为三页、每页五种；包含产品筛选和导航，并检查编辑器、预览、发布及公开页面。
 - 文章、图册和视频详情区块。AI 类型菜单中没有产品详情，因此未覆盖该项。
-- 静态图文的快速、进阶和深度模式，并检查预期的 6/10/20 点数变化。
+- 静态图文的快速、进阶和深度模式，并检查预期的 6/15/30 点数变化。
 - 通过文字描述、图片上传和参考网址生成静态图文。
 - AI 整页生成，以及整页和区块生成历史复用流程。
 - 产品列表设置和文章列表设置回归命令。
@@ -26,21 +26,21 @@ npm ci
 cp .env.example .env.local
 ```
 
-在本地编辑 `.env.local`。运行 CLI 时会自动读取仓库根目录下的 `.env.local`（已存在于 shell 中的同名变量优先，不会被覆盖）。
+在本地将 `.env.example` 中需要的值导出到 shell 环境；CLI 不会自动读取 `.env.local`。
 
-管理员登录配置如下。`AIBLOCK_ADMIN_CONFIG` 指向的 JSON 文件应位于仓库外，并包含 `account` 和 `password`。新变量优先于旧变量；旧的 `BUG1004949_*` 变量仍作为后备兼容。`.env.local`、外部凭据文件、Playwright 登录状态和运行状态均为本地文件，不要将凭据写入源码、报告或提交记录。
+管理员登录配置如下。`LEADONG_ADMIN_CONFIG` 指向的 JSON 文件应位于仓库外，并包含 `account` 和 `password`。新变量优先于旧变量；旧的 `BUG1004949_*` 变量仍作为已弃用的后备兼容。`.env.local`、外部凭据文件、Playwright 登录状态和运行状态均为本地文件，不要将凭据写入源码、报告或提交记录。
 
 | 变量 | 用途 |
 | --- | --- |
-| `AIBLOCK_ADMIN_ACCOUNT` | 管理员账号 |
-| `AIBLOCK_ADMIN_PASSWORD` | 管理员密码 |
-| `AIBLOCK_ADMIN_CONFIG` | 可选的外部 JSON 凭据文件路径 |
-| `AIBLOCK_TEST_IMAGE` | 可选的本地图片路径 |
+| `LEADONG_ADMIN_ACCOUNT` | 管理员账号 |
+| `LEADONG_ADMIN_PASSWORD` | 管理员密码 |
+| `LEADONG_ADMIN_CONFIG` | 可选的外部 JSON 凭据文件路径 |
+| `LEADONG_TEST_IMAGE` | 可选的本地图片路径 |
 | `UI_STORAGE_STATE` | 可选的 Playwright 登录状态文件 |
 | `UI_PROXY` | 可选代理；默认直连 |
 | `MIDSCENE_MODEL_API_KEY` | 仅视觉回退流程需要 |
 
-图片输入流程默认使用仓库内的 `fixtures/images/ai-block-test-image.png`。如需指定其他本地图片，可设置 `AIBLOCK_TEST_IMAGE` 为绝对路径或仓库相对路径。配置中的相对路径始终以仓库根目录为基准，与当前工作目录无关。只有流程确实需要登录时才要求提供账号密码。
+图片输入流程默认使用仓库内的 `fixtures/images/test-image.png`。如需指定其他本地图片，可设置 `LEADONG_TEST_IMAGE` 为绝对路径或仓库相对路径。配置中的相对路径始终以仓库根目录为基准，与当前工作目录无关。只有流程确实需要登录时才要求提供账号密码。
 
 HTML 上传样例位于 `fixtures/html-upload/pulse-dashboard.html`。
 
@@ -52,15 +52,15 @@ HTML 上传样例位于 `fixtures/html-upload/pulse-dashboard.html`。
 npx playwright install chromium
 ```
 
-设置 `CI` 环境变量时，浏览器默认以 headless 模式启动。可用以下变量覆盖浏览器配置；`AIBLOCK_BROWSER_CHANNEL` 留空或设为 `chromium` 时使用 Playwright 自带的 Chromium，设为 `chrome` 或 `msedge` 时使用已安装的对应浏览器 channel。
+设置 `CI` 环境变量时，浏览器默认以 headless 模式启动。可用以下变量覆盖浏览器配置；`LEADONG_BROWSER_CHANNEL` 留空或设为 `chromium` 时使用 Playwright 自带的 Chromium，设为 `chrome` 时使用 Google Chrome。CI 默认 headless 并使用内置 Chromium；macOS 默认保持 headed Chrome 和现有操作延迟。
 
 | 变量 | 用途 |
 | --- | --- |
-| `AIBLOCK_BROWSER_CHANNEL` | 浏览器 channel：`chrome`、`msedge`、`chromium` 或空值；未设置时沿用配置（默认 `chrome`） |
-| `AIBLOCK_HEADLESS` | 覆盖显示模式，接受 `true`/`false` 或 `1`/`0`；未设置时 CI 默认 headless，非 CI 沿用配置 |
-| `AIBLOCK_SLOWMO` | 覆盖 Playwright 操作延迟，单位毫秒，必须为非负数 |
+| `LEADONG_BROWSER_CHANNEL` | 浏览器 channel：`chrome`、`msedge`、`chromium` 或空值；未设置时沿用配置（非 CI 默认 `chrome`） |
+| `LEADONG_HEADLESS` | 覆盖显示模式，接受 `true`/`false` 或 `1`/`0`；未设置时 CI 默认 headless，非 CI 沿用配置 |
+| `LEADONG_SLOW_MO` | 覆盖 Playwright 操作延迟，单位毫秒，必须为非负整数 |
 
-GitHub Actions（`.github/workflows/offline-tests.yml`）会在 push 到 main、提交 PR 或手动触发时，在 ubuntu + Node 20 上安装 Playwright Chromium 与 headless shell 并运行 `npm test`。CI 只跑离线单测，不登录、不访问真实站点、不消耗积分。
+GitHub Actions（`.github/workflows/ci.yml`）会在 push 和 pull request 时，在 Ubuntu + Node 22 上安装 Playwright Chromium 并运行 `npm test`。CI 只跑离线单测，不登录、不访问真实站点、不消耗积分。
 
 ## 常用命令
 
@@ -92,3 +92,10 @@ npm run page:html-upload
 ## 运行数据
 
 生成的报告、截图、浏览器配置、认证状态和运行状态仅保存在本地，并已从 Git 排除。脚本会按需将其写入 `reports/`、`output/`、`.auth/` 和 `.state/`。如需恢复运行，请保留这些目录；新克隆的仓库不包含这些数据。
+
+
+## CI / 本地测试
+
+GitHub Actions 在 Ubuntu 和 Node.js 22 上安装 Playwright Chromium 并运行 `npm test`，不会运行登录或真实站点自动化脚本。所有配置中的本地文件、状态和输出路径以仓库根目录解析，绝对路径保持原样。
+
+AI 生成模式与预期点数由 `ai.generationModes` 统一配置：快速模式 6 点、进阶模式 15 点（接受旧称“高级模式”）、深度模式 30 点。

@@ -1,3 +1,4 @@
+import { sleep } from "./wait-utils.mjs";
 import { measuredCost } from "./ai-mode-points-state.mjs";
 
 export function parseAvailablePoints(text) {
@@ -45,7 +46,7 @@ export class AiDialogPointsReader {
     while (Date.now() < deadline) {
       after = await this.read(frame);
       if (measuredCost(before, after) === expectedCost) return after;
-      await new Promise((resolve) => setTimeout(resolve, intervalMs));
+      await sleep(intervalMs);
     }
     return after;
   }

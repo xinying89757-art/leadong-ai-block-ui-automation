@@ -83,7 +83,7 @@ async function main() {
     return;
   }
   if (!options.apply) throw new Error(`${command} 需显式传 --apply`);
-  const { context, page } = await launchEditorBrowser({ ...config, ai: { ...config.ai, runId } }, { headless: options.headless === true, isolatedProfile: false, slowMo: 0 });
+  const { context, page } = await launchEditorBrowser({ ...config, ai: { ...config.ai, runId } }, { ...(options.headless === true ? { headless: true } : {}), isolatedProfile: false });
   try {
     const editor = new LeadongEditor(page, config);
     await editor.goto();

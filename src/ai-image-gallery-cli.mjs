@@ -81,9 +81,9 @@ async function main() {
   }
   const scoped = imageGalleryScopedConfig(config, runId, paths.state);
   const { context, page } = await launchEditorBrowser(scoped, {
-    headless: options.headless === true,
+    ...(options.headless === true ? { headless: true } : {}),
     isolatedProfile: false,
-    slowMo: 0,
+
   });
   let automation;
   try {

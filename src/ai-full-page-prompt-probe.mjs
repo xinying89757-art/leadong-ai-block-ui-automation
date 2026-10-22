@@ -14,7 +14,7 @@ const prompt = process.argv.find((value) => value.startsWith("--prompt="))?.slic
 const noHistoryBefore = process.argv.includes("--no-history-before");
 const file = path.join(config.paths.aiLifecycleDir, "full-page-probes", `${runId}.json`);
 const result = { runId, prompt, startedAt: new Date().toISOString(), request: null, record: null, error: "" };
-const { context, page } = await launchEditorBrowser(config, { headless: false, isolatedProfile: false, slowMo: 0 });
+const { context, page } = await launchEditorBrowser(config, { headless: false, isolatedProfile: false });
 const baselineHistoryItems = [];
 const onListResponse = async (response) => {
   if (response.request().method() !== "GET" ||

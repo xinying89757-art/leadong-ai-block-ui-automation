@@ -93,7 +93,7 @@ async function main() {
 
   const { context, page } = await launchEditorBrowser(
     { ...config, ai: { ...config.ai, runId } },
-    { headless: options.headless === true, isolatedProfile: false, slowMo: 0 },
+    { ...(options.headless === true ? { headless: true } : {}), isolatedProfile: false },
   );
   try {
     const editor = new LeadongEditor(page, config);

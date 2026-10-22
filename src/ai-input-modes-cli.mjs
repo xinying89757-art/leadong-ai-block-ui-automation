@@ -79,7 +79,7 @@ async function main() {
   }
   if (command === "cleanup" && !options.apply) throw new Error("清理页面和区块需显式传 --apply");
   if (command === "resume" && !options.apply) throw new Error("恢复生成需显式传 --apply");
-  const { context, page } = await launchEditorBrowser({ ...config, ai: { ...config.ai, runId } }, { headless: options.headless === true, isolatedProfile: false, slowMo: 0 });
+  const { context, page } = await launchEditorBrowser({ ...config, ai: { ...config.ai, runId } }, { ...(options.headless === true ? { headless: true } : {}), isolatedProfile: false });
   try {
     const editor = new LeadongEditor(page, config);
     await editor.goto();

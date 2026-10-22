@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { chromium } from 'playwright';
+import { browserLaunchOptions } from '../src/browser-options.mjs';
 import { LeadongEditor } from '../src/editor.mjs';
 
-test('页面设置只读当前可见弹窗，监听真实提交，回读请求和业务回执', async () => {
+test('页面设置只读当前可见弹窗，监听真实提交，回读请求和业务回执', async (t) => {
   let businessFail = false, requests = 0;
   let server;
   let browser;
@@ -23,8 +24,14 @@ test('页面设置只读当前可见弹窗，监听真实提交，回读请求�
       <input id="pageTitle" name="page.pageTitle"><input id="pageUrl" name="page.pageUrl">
       <a class="page_function_setting_submit" onclick="fetch('/phoenix/page/setting',{method:'POST',body:new URLSearchParams({'page.pageTitle':document.querySelector('#pageTitle').value,'page.pageUrl':document.querySelector('#pageUrl').value})})">确定</a></div>`);
   });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  browser = await chromium.launch({ headless: true, timeout: 30000 });
+  try {
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+  } catch (error) {
+    if (error.code === 'EPERM') { t.skip('sandbox does not permit local HTTP listeners'); return; }
+    throw error;
+  }
+  try { browser = await chromium.launch(browserLaunchOptions({ browser: { channel: 'chromium', headless: true } }, {}, process.env)); }
+  catch (error) { t.skip(`browser unavailable in this environment: ${error.message.split('\n')[0]}`); return; }
     const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     const editor = new LeadongEditor(page, { selectors: { pageCreateResponseUrlIncludes: '/phoenix/page/setting' }, timeouts: { actionMs: 2000 } });

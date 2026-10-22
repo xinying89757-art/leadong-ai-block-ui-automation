@@ -1,3 +1,4 @@
+import { sleep } from "./wait-utils.mjs";
 import { createHash } from "node:crypto";
 
 // Count real page blocks, never the AI result iframe or preview toolbar.
@@ -76,7 +77,7 @@ export async function waitForCompleteContent(read, {
       if (!stableSince || fingerprint !== last.fingerprint) { stableSince = Date.now(); fingerprint = last.fingerprint; }
       if (Date.now() - stableSince >= stableMs) return { ...last, stableMs, expectedCount };
     }
-    await new Promise((resolve) => setTimeout(resolve, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
+    await sleep(Math.min(pollMs, Math.max(0, deadline - Date.now())));
   }
   const identityProblem = last?.targetMatched === false ? '，当前页面与测试目标不一致' :
     last?.applicationMatched === false ? '，无法确认是本轮新增内容' : '';

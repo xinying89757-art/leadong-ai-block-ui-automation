@@ -72,9 +72,9 @@ async function main() {
   if (!options.apply) throw new Error("恢复或清理需显式传 --apply");
   const runtimeConfig = { ...config, ai: { ...config.ai, runId } };
   const { context, page } = await launchEditorBrowser(runtimeConfig, {
-    headless: options.headless === true,
+    ...(options.headless === true ? { headless: true } : {}),
     isolatedProfile: false,
-    slowMo: 0,
+
   });
   try {
     const editor = new LeadongEditor(page, runtimeConfig);

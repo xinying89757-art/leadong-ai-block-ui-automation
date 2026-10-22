@@ -26,7 +26,7 @@ test("输入方式专项状态按运行 ID 隔离并保存图片路径和网址"
   const state = createInputModeState(config, "input-modes-test-1");
   assert.equal(state.records.length, 3);
   assert.equal(new Set(state.records.map((record) => record.input_mode)).size, 3);
-  assert.ok(state.records[1].image_path.endsWith("/fixtures/images/ai-block-test-image.png"));
+  assert.ok(state.records[1].image_path.endsWith("/fixtures/images/test-image.png"));
   assert.equal(state.records[2].reference_url, "https://www.udearspace.com/");
   assert.ok(inputModePage(config, "input-modes-test-1").name.endsWith("input-modes-test-1"));
 });
@@ -70,5 +70,5 @@ test("图片和网址输入配置满足实际 UI 控件约定", async () => {
   assert.equal(config.selectors.aiUploadFileSelector, "input[type='file'].hidden-input");
   assert.equal(config.selectors.aiUploadPreviewSelector, ".preview-thumb, .el-image__inner[alt='预览']");
   assert.equal(config.selectors.aiUrlSelector, "input.ai-url-input");
-  assert.ok(config.ai.inputModeRegression.imagePath.endsWith("/fixtures/images/ai-block-test-image.png"));
+  assert.ok(config.ai.inputModeRegression.imagePath.endsWith("/fixtures/images/test-image.png"));
 });

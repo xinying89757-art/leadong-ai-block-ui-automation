@@ -1,3 +1,4 @@
+import { pollUntil, sleep } from "./wait-utils.mjs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { AiBlockAutomation } from "./ai-runner.mjs";
 import { DetailContentBrowser } from "./ai-detail-content.mjs";
@@ -40,14 +41,7 @@ import {
 } from "./product-list-frame-resolver.mjs";
 
 async function waitFor(check, timeoutMs, label, intervalMs = 250) {
-  const deadline = Date.now() + timeoutMs;
-  let lastError;
-  while (Date.now() < deadline) {
-    try { const value = await check(); if (value) return value; }
-    catch (error) { lastError = error; }
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-  }
-  throw new Error(`${label}等待超时${lastError ? `：${lastError.message}` : ""}`);
+  return pollUntil(check, { timeoutMs, intervalMs, message: `${label}等待超时`, retryOnError: true });
 }
 
 async function visible(locator) { return Boolean(locator) && locator.isVisible().catch(() => false); }
@@ -290,7 +284,7 @@ export class AiProductListSettingsAutomation {
         if (/唯一匹配失败/.test(error.message)) throw error;
         lastError = error;
       }
-      await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+      await sleep(100);
     }
     throw new Error(`产品列表设置侧边栏等待超时${lastError ? `：${lastError.message}` : ""}`);
   }
@@ -2280,7 +2274,7 @@ export class AiProductListSettingsAutomation {
       catch (error) {
         if (/唯一匹配失败/.test(error.message)) throw error;
       }
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await sleep(100);
     }
     throw new Error(`${label}等待超时`);
   }

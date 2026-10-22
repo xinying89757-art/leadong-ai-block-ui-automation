@@ -1,6 +1,6 @@
 import { chmod, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
-import { aiblockEnv } from "./config.mjs";
+import { leadongEnv, resolveProjectPath } from "./config.mjs";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -16,8 +16,8 @@ function optionalProxy(value) {
 function authSettings(config) {
   const configured = config.auth ?? {};
   return {
-    configPath: aiblockEnv("AIBLOCK_ADMIN_CONFIG", configured.configPath),
-    storageStatePath: env("UI_STORAGE_STATE", configured.storageStatePath),
+    configPath: leadongEnv("LEADONG_ADMIN_CONFIG", configured.configPath) ? resolveProjectPath(leadongEnv("LEADONG_ADMIN_CONFIG", configured.configPath)) : null,
+    storageStatePath: env("UI_STORAGE_STATE", configured.storageStatePath) ? resolveProjectPath(env("UI_STORAGE_STATE", configured.storageStatePath)) : null,
     adminUrl: env("UI_ADMIN_URL", configured.adminUrl),
     loginUrl: env("UI_ADMIN_LOGIN_URL", configured.loginUrl),
     proxy: optionalProxy(env("UI_PROXY", configured.proxy)),
@@ -32,16 +32,16 @@ export async function readAdminCredentials(config) {
     try {
       fileConfig = JSON.parse(await readFile(settings.configPath, "utf8"));
     } catch (error) {
-      if (!aiblockEnv("AIBLOCK_ADMIN_ACCOUNT") || !aiblockEnv("AIBLOCK_ADMIN_PASSWORD")) {
+      if (!leadongEnv("LEADONG_ADMIN_ACCOUNT") || !leadongEnv("LEADONG_ADMIN_PASSWORD")) {
         throw new Error(`无法读取管理员账号配置 ${settings.configPath}：${error.message}`);
       }
     }
   }
-  const account = aiblockEnv("AIBLOCK_ADMIN_ACCOUNT", fileConfig.account);
-  const password = aiblockEnv("AIBLOCK_ADMIN_PASSWORD", fileConfig.password);
+  const account = leadongEnv("LEADONG_ADMIN_ACCOUNT", fileConfig.account);
+  const password = leadongEnv("LEADONG_ADMIN_PASSWORD", fileConfig.password);
   if (!account || !password) {
     throw new Error(
-      "缺少管理员账号配置，请设置 AIBLOCK_ADMIN_ACCOUNT/AIBLOCK_ADMIN_PASSWORD，或提供外部 admin-login.json",
+      "缺少管理员账号配置，请设置 LEADONG_ADMIN_ACCOUNT/LEADONG_ADMIN_PASSWORD，或提供外部 admin-login.json",
     );
   }
   return { account, password };

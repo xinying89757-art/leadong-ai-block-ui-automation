@@ -10,8 +10,9 @@ import { pageContentSnapshot } from "../src/ai-content-ready.mjs";
 
 const config = await loadConfig("config/run.json");
 config.ai.fullPageRegression = { ...config.ai.fullPageRegression, applicationTimeoutMs: 5000, applicationStableMs: 200, applicationPollIntervalMs: 25 };
-const browser = await chromium.launch(browserLaunchOptions({ browser: { channel: "chrome", headless: false } }));
+let browser;
 try {
+  browser = await chromium.launch(browserLaunchOptions({ browser: { channel: "chrome", headless: false } }));
   const page = await browser.newPage();
   page.on("pageerror", (error) => console.error(`Fixture page error: ${error.message}`));
   await page.setContent(`<h1>Offline AI insertion timing verification</h1><iframe id="canvas" style="width:95vw;height:70vh"></iframe><iframe id="ai-result" style="display:none"></iframe>`);
@@ -65,4 +66,4 @@ try {
   await mkdir(path.dirname(artifact), { recursive: true });
   await page.screenshot({ path: artifact });
   console.log(JSON.stringify({ ok: true, headed: true, offline: true, insertionBarrierMs: elapsed, blockCount: 3, oldHomeBlocksRejected: true, prematureNavigationOrSave: false, previewShellRejected: true, screenshot: artifact }, null, 2));
-} finally { await browser.close(); }
+} finally { await browser?.close().catch(() => {}); }

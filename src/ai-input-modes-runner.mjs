@@ -1,3 +1,4 @@
+import { pollUntil } from "./wait-utils.mjs";
 import { stat, writeFile } from "node:fs/promises";
 import { AiBlockAutomation } from "./ai-runner.mjs";
 import { AiDialogPointsReader } from "./ai-points.mjs";
@@ -15,13 +16,7 @@ import {
 } from "./ai-input-modes-state.mjs";
 
 async function waitFor(check, timeoutMs, label, intervalMs = 250) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const value = await check();
-    if (value) return value;
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-  }
-  throw new Error(`${label}等待超时`);
+  return pollUntil(check, { timeoutMs, intervalMs, message: `${label}等待超时` });
 }
 
 async function visible(locator) { return locator.isVisible().catch(() => false); }

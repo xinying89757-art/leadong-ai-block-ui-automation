@@ -1,3 +1,4 @@
+import { sleep } from "./wait-utils.mjs";
 import path from "node:path";
 import { isGlobalSafetyFailure } from './ai-regression-state.mjs';
 import { AiBlockAutomation } from "./ai-runner.mjs";
@@ -338,7 +339,7 @@ export class AiHistoryReuseAutomation {
       }
       await this.closeBlockDialog(frame);
       if (Date.now() >= deadline) break;
-      await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, deadline - Date.now())));
+      await sleep(Math.min(intervalMs, deadline - Date.now()));
     }
     throw new Error("静态图文生成记录在关闭并重新打开后仍未成功");
   }

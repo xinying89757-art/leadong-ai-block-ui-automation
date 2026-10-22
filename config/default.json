@@ -35,6 +35,11 @@
     "excludedTypes": ["产品详情", "图册详情", "文章详情", "视频详情"],
     "inputMode": "文字描述",
     "generationMode": "快速模式",
+    "generationModes": [
+      { "key": "quick", "label": "快速模式", "aliases": [], "expectedCost": 6, "heading": "AI Static Text Quick Mode Regression" },
+      { "key": "advanced", "label": "进阶模式", "aliases": ["高级模式"], "expectedCost": 15, "heading": "AI Static Text Advanced Mode Regression" },
+      { "key": "deep", "label": "深度模式", "aliases": [], "expectedCost": 30, "heading": "AI Static Text Deep Mode Regression" }
+    ],
     "generationTimeoutMs": 180000,
     "generationStatusRefreshIntervalMs": 30000,
     "pageSwitchStableMs": 3000,
@@ -49,23 +54,17 @@
       "pointsPollIntervalMs": 2000,
       "pointsTimeoutMs": 60000,
       "generationTimeoutMs": 300000,
-      "generationStatusRefreshIntervalMs": 30000,
-      "modes": [
-        { "key": "quick", "label": "快速模式", "expectedCost": 6, "heading": "AI Static Text Quick Mode Regression" },
-        { "key": "advanced", "label": "进阶模式", "expectedCost": 10, "heading": "AI Static Text Advanced Mode Regression" },
-        { "key": "deep", "label": "深度模式", "expectedCost": 20, "heading": "AI Static Text Deep Mode Regression" }
-      ]
+      "generationStatusRefreshIntervalMs": 30000
     },
     "inputModeRegression": {
       "enabled": true,
       "type": "静态图文",
       "generationMode": "快速模式",
-      "expectedCost": 6,
       "promptPolishEnabled": false,
       "blocksPerPage": 3,
       "pageNamePrefix": "AI输入方式回归-",
       "pagePathPrefix": "ai-input-modes-regression-",
-      "imagePath": "fixtures/images/ai-block-test-image.png",
+      "imagePath": "fixtures/images/test-image.png",
       "referenceUrl": "https://www.udearspace.com/",
       "pointsPollIntervalMs": 2000,
       "pointsTimeoutMs": 60000,

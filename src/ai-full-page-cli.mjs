@@ -64,7 +64,7 @@ async function main() {
       { ...config, ai: { ...config.ai, runId: targetRunId } },
       // Reuse the login profile created by `npm run login` so repeated
       // regression runs do not ask for credentials again.
-      { headless: options.headless === true, isolatedProfile: false, slowMo: 0 },
+      { ...(options.headless === true ? { headless: true } : {}), isolatedProfile: false },
     );
     try {
       const editor = new LeadongEditor(page, config);
