@@ -47,6 +47,17 @@ function sourceKey(value) {
   catch { return String(value ?? "").split("/").filter(Boolean).at(-1) ?? ""; }
 }
 
+/** Shared UI extraction; keep locators so the selected owned card can be acted on. */
+export async function readHistoryCards(frame, config) {
+  const cards = frame.locator(config.selectors.aiHistoryCardSelector);
+  const result = [];
+  for (let index = 0, count = await cards.count(); index < count; index++) {
+    const card = cards.nth(index);
+    result.push({ card, text: await card.innerText(), id: await card.getAttribute('data-id') || await card.getAttribute('data-record-id') || '', index });
+  }
+  return result;
+}
+
 export function renderedBlockEvidence(data, editorEvidence) {
   const signature = normalizeText(editorEvidence?.text_signature);
   const textMatched = signature.length >= 12 && normalizeText(data?.text).includes(signature);
@@ -294,12 +305,8 @@ export class AiHistoryReuseAutomation {
   }
 
   async inspectBlockHistory(frame) {
-    const cards = frame.locator(this.config.selectors.aiHistoryCardSelector);
-    const matches = [];
-    for (let index = 0, count = await cards.count().catch(() => 0); index < count; index += 1) {
-      const candidate = cards.nth(index);
-      if ((await candidate.innerText().catch(() => "")).includes(this.state.block.generation.marker)) matches.push(candidate);
-    }
+    const records = await readHistoryCards(frame, this.config);
+    const matches = records.filter(record => record.text.includes(this.state.block.generation.marker)).map(record => record.card);
     if (matches.length > 1) throw new Error(`静态图文生成记录匹配到 ${matches.length} 条，拒绝不确定插入`);
     if (matches.length === 0) return { status: "not-found", card: null };
     const card = matches[0];

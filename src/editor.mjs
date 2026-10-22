@@ -749,7 +749,7 @@ export class LeadongEditor {
   async customPageExists(name) {
     await this.openCustomPageList();
     const exists = Boolean(
-      await firstVisible([this.page.getByText(name, { exact: true })]),
+      await firstVisible([this.page.locator(`a.name[title="${escapeCssAttributeValue(name)}"]`)]),
     );
     await this.page.keyboard.press("Escape");
     await this.dismissPageMenu();

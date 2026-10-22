@@ -134,3 +134,16 @@ The underlying CLI requires `--apply` for run, resume and cleanup. Run IDs are v
 `ai.resultActionsRegression.mode` defaults to `"quick"`. Separate generations on independently recorded test pages exercise prompt preservation, regeneration with history and credit checks, direct application, and both changed-content exit branches. A failed commit is isolated while the remaining independent cases run. The commit barrier excludes temporary AI canvases and requires a stable count increase of exactly one, the generated heading and a cleared overlay. Both applied blocks are checked in preview. Cleanup requires a matching creation receipt and page identity and deletes only that run's page; neither flow publishes.
 
 A run exits unsuccessfully when an application or preview assertion fails. A completed history record is never enough to mark application successful. Modification can recover its own completed history record in the same modification context; the report records blank/disabled result observations. Preview is loaded from the editor’s own preview link in a separate tab, and its endpoint must return the expected heading. No publish fallback is used.
+
+## 生成历史（Flow 3）
+
+`ai:history` 在独立 `AI生成历史回归-<runId>` 页面生成一个快速模式区块，检查生成记录徽标 +1、全部分页记录的时间倒序、状态/输入方式/模式/类型/点数徽标，以及自己的完成记录「＋插入」后的画布标题与零额外扣点。若历史中有真实的可恢复组合失败记录，则在测试页面中执行「继续生成」，等待该记录完成并记录扣点；没有可用失败记录时明确标记 skipped，不伪造失败。不会发布。
+
+```sh
+LEADONG_HTTPS_UPGRADE_HOSTS=website.leadong.com npm run ai:history -- --run-id history-example
+npm run ai:history:resume -- --run-id history-example
+npm run ai:history:status -- --run-id history-example
+npm run ai:history:cleanup -- --run-id history-example --apply
+```
+
+配置为 `ai.historyRegression`。run/resume/cleanup 必须 `--apply`（前两者的 npm 脚本已包含）。状态和创建回执记录在 lifecycle 目录，JSON/Markdown 与截图在 `reports/ai-history/<runId>/`。恢复只读取/使用已提交的记录，不重复提交已扣点生成；应用状态不确定时先检查画布。cleanup 只删除该 run 的精确归属页面。

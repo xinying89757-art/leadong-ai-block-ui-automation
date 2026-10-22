@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { readHistoryReuseJson, writeHistoryReuseJson } from './ai-history-reuse-state.mjs';
+const flows = { modify: { config: 'modifyRegression', prefix: 'AI修改回归-', token: 'Modify' }, 'result-actions': { config: 'resultActionsRegression', prefix: 'AI结果页回归-', token: 'Result' }, history: { config: 'historyRegression', prefix: 'AI生成历史回归-', token: 'History' }, validation: { config: 'validationRegression', prefix: 'AI输入校验回归-', token: 'Validation' } };
 export const readFlowJson = readHistoryReuseJson;
 export const writeFlowJson = writeHistoryReuseJson;
 export function validateRunId(value) {
@@ -8,17 +9,17 @@ export function validateRunId(value) {
   return value;
 }
 export function flowConfig(config, flow) {
-  if (!['modify', 'result-actions'].includes(flow)) throw new Error('Unknown flow');
-  const value = config.ai[flow === 'modify' ? 'modifyRegression' : 'resultActionsRegression'];
+  if (!Object.hasOwn(flows, flow)) throw new Error('Unknown flow');
+  const value = config.ai[flows[flow].config];
   if (!value?.enabled) throw new Error(`${flow} is disabled`);
   for (const key of ['generationTimeoutMs', 'commitTimeoutMs']) if (!Number.isInteger(value[key]) || value[key] <= 0) throw new Error(`Invalid ${key}`);
   const keys = flow === 'modify' ? value.modes : [value.mode];
   if (!Array.isArray(keys) || !keys.length || new Set(keys).size !== keys.length || keys.some(key => !config.ai.generationModes.some(mode => mode.key === key))) throw new Error('Invalid generation modes');
-  if (!value.pageNamePrefix?.startsWith(flow === 'modify' ? 'AI修改回归-' : 'AI结果页回归-') || !value.pagePathPrefix?.startsWith(`ai-${flow}-regression-`)) throw new Error('Unsafe page prefix');
+  if (!value.pageNamePrefix?.startsWith(flows[flow].prefix) || !value.pagePathPrefix?.startsWith(`ai-${flow}-regression-`)) throw new Error('Unsafe page prefix');
   return value;
 }
 export function flowPaths(config, flow, runId) {
-  if (!['modify', 'result-actions'].includes(flow)) throw new Error('Unknown flow');
+  if (!Object.hasOwn(flows, flow)) throw new Error('Unknown flow');
   validateRunId(runId);
   return { state: path.join(config.paths.aiLifecycleDir, 'runs', runId, `ai-${flow}`, 'state.json'),
     active: path.join(config.paths.aiLifecycleDir, `${flow}-active.json`),
@@ -30,10 +31,10 @@ export function flowPage(config, flow, runId) {
 }
 export function createFlowState(config, flow, runId) {
   const mode = flowConfig(config, flow);
-  const keys = flow === 'modify' ? ['seed', ...mode.modes] : ['return-modify', 'regenerate-apply', 'exit-discard', 'exit-apply'];
+  const keys = flow === 'modify' ? ['seed', ...mode.modes] : flow === 'history' ? ['generate', 'records', 'insert', 'continue'] : flow === 'validation' ? ['empty-prompt', 'gif', 'bmp', 'oversize', 'valid-png', 'invalid-url-text', 'invalid-url-ftp', 'invalid-url-host', 'credits'] : ['return-modify', 'regenerate-apply', 'exit-discard', 'exit-apply'];
   const state = { version: 1, flow, run_id: validateRunId(runId), site_name: config.siteName, site_language: config.siteLanguage,
     created_at: new Date().toISOString(), status: 'pending', page: { ...flowPage(config, flow, runId), create_status: 'pending', cleanup_status: 'pending' },
-    steps: keys.map((key, index) => ({ key, status: 'pending', token: `AI${flow === 'modify' ? 'Modify' : 'Result'}${index}${runId.replace(/[-_]/g, '')}`, generation_status: 'pending', application_status: 'pending', evidence: [] })), evidence: [], diagnostics: [] };
+    steps: keys.map((key, index) => ({ key, status: 'pending', token: `AI${flows[flow].token}${index}${runId.replace(/[-_]/g, '')}`, generation_status: 'pending', application_status: 'pending', evidence: [] })), evidence: [], diagnostics: [] };
   if (flow === 'result-actions') for (const step of state.steps.slice(1)) step.page = {
     name: `${mode.pageNamePrefix}${step.key}-${runId}`, path: `/${mode.pagePathPrefix}${step.key}-${runId}`,
     create_status: 'pending', cleanup_status: 'pending' };

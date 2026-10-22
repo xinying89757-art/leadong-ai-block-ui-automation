@@ -389,7 +389,23 @@
         "titleCell": 2,
         "marker": "AI Video Detail Regression"
       }
-    ]
+    ],
+    "historyRegression": {
+      "enabled": true,
+      "pageNamePrefix": "AI生成历史回归-",
+      "pagePathPrefix": "ai-history-regression-",
+      "mode": "quick",
+      "generationTimeoutMs": 180000,
+      "commitTimeoutMs": 60000
+    },
+    "validationRegression": {
+      "enabled": true,
+      "pageNamePrefix": "AI输入校验回归-",
+      "pagePathPrefix": "ai-validation-regression-",
+      "mode": "quick",
+      "generationTimeoutMs": 180000,
+      "commitTimeoutMs": 60000
+    }
   },
   "timeouts": {
     "actionMs": 15000,

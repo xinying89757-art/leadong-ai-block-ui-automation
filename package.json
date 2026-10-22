@@ -83,7 +83,11 @@
     "ai:result-actions": "node src/ai-result-actions-cli.mjs run --apply",
     "ai:result-actions:resume": "node src/ai-result-actions-cli.mjs resume --apply",
     "ai:result-actions:status": "node src/ai-result-actions-cli.mjs status",
-    "ai:result-actions:cleanup": "node src/ai-result-actions-cli.mjs cleanup"
+    "ai:result-actions:cleanup": "node src/ai-result-actions-cli.mjs cleanup",
+    "ai:history": "node src/ai-history-cli.mjs run --apply",
+    "ai:history:resume": "node src/ai-history-cli.mjs resume --apply",
+    "ai:history:status": "node src/ai-history-cli.mjs status",
+    "ai:history:cleanup": "node src/ai-history-cli.mjs cleanup"
   },
   "engines": {
     "node": ">=20"

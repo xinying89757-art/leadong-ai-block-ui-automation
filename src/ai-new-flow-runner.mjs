@@ -46,6 +46,7 @@ export class NewFlowAutomation {
     assertFlowState(this.state, this.config, this.flow, this.runId);
     this.state.started_at ||= new Date().toISOString();
     this.command = command;
+    if (command === 'cleanup') this.state.verification_result ??= { status: this.state.status, failure_reason: this.state.failure_reason, ended_at: this.state.ended_at, duration_ms: this.state.duration_ms };
     if (['run','resume'].includes(command)) { this.state.status = 'running'; this.state.failure_reason = ''; }
     this.state.attempts ??= [];
     this.state.attempts.push({ command, started_at: new Date().toISOString(), status: 'running' });
@@ -63,6 +64,11 @@ export class NewFlowAutomation {
     (step?.evidence ?? this.state.evidence).push(file); await this.persist(); return file;
   }
   async fail(error) {
+    if (this.command === 'cleanup') {
+      this.state.cleanup_failure = error.message; this.finishAttempt('failed', error.message);
+      if (this.editor) await this.shot('cleanup-failure').catch(() => {});
+      await this.persist(); return;
+    }
     this.state.status = 'failed'; this.state.failure_reason = error.message;
     this.state.ended_at = new Date().toISOString();
     this.state.duration_ms = Date.parse(this.state.ended_at) - Date.parse(this.state.started_at);
@@ -212,13 +218,13 @@ export class NewFlowAutomation {
       let next = '';
       for (const candidate of this.editor.page.frames()) {
         if (!isTemporaryAiFrame(candidate)) continue;
-        const heading = candidate.locator('h1,h2,h3,h4').filter({ hasText: step.token }).first();
+        const heading = candidate.locator('h1,h2,h3,h4').filter({ hasText: step.content_token ?? step.token }).first();
         if (await visible(heading)) { next = await heading.innerText(); break; }
       }
       if (!next || next !== signature) { signature = next; stableSince = Date.now(); return false; }
       return Date.now() - stableSince >= 1000;
     }, 15000, 'Full-screen generated heading did not stabilize');
-    step.fullscreen_evidence = { token: step.token, heading: signature, stable_ms: 1000, apply_ready: true };
+    step.fullscreen_evidence = { token: step.content_token ?? step.token, heading: signature, stable_ms: 1000, apply_ready: true };
     await this.shot(`${step.key}-fullscreen`, step); return header;
   }
   async applyNew(frame, step, { confirmation = false } = {}) {
@@ -264,11 +270,11 @@ export class NewFlowAutomation {
       step.commit_observations = observations; await this.persist();
     }
     step.commit_observations = observations; step.committed_block_id = committed.addedId;
-    await this.waitToken(committed.addedId, step.edited_token ?? step.token);
+    await this.waitToken(committed.addedId, step.edited_token ?? step.content_token ?? step.token);
     step.application_status = 'applied'; step.editor_verified = true;
     await this.shot(`${step.key}-committed`, step); await this.persist();
   }
-  async saveAndPreview(step, token = step.edited_token ?? step.token) {
+  async saveAndPreview(step, token = step.edited_token ?? step.content_token ?? step.token) {
     await this.assertOwnedIdentity();
     try { step.save_evidence = await this.editor.savePage(); }
     catch (error) {
@@ -343,7 +349,8 @@ export class NewFlowAutomation {
       if (await this.editor.customPageExists(page.name)) {
         await this.editor.openCustomPage(page.name); await this.assertOwnedIdentity();
         const deleted = await this.editor.deleteCustomPage(page.name, { apply: true });
-        if (!deleted.applied || await this.editor.customPageExists(page.name)) throw new Error('Owned page deletion unconfirmed');
+        if (!deleted.applied) throw new Error('Owned page deletion unconfirmed');
+        await wait(async () => !await this.editor.customPageExists(page.name), 15000, 'Owned page deletion unconfirmed');
       }
       page.cleanup_status = 'completed'; await this.persist();
     }
