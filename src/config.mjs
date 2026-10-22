@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { httpsUpgradeHosts } from "./network-https-upgrade.mjs";
+
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
 export const projectRoot = path.resolve(sourceDir, "..");
 
@@ -81,6 +83,7 @@ export async function loadConfig(overridePath = "config/run.json") {
   const defaults = await readJson(path.resolve(projectRoot, "config/default.json"));
   const override = overridePath ? await readJson(resolveProjectPath(overridePath)) : {};
   const config = deepMerge(defaults, override);
+  config.network = { ...config.network, httpsUpgradeHosts: httpsUpgradeHosts(config) };
   for (const [key, value] of Object.entries(config.paths ?? {})) {
     if (typeof value === "string" && value) config.paths[key] = resolveProjectPath(value);
   }

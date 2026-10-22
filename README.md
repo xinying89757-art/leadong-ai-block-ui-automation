@@ -61,6 +61,8 @@ npx playwright install chromium
 | `LEADONG_HEADLESS` | 覆盖显示模式，接受 `true`/`false` 或 `1`/`0`；未设置时 CI 默认 headless，非 CI 沿用配置 |
 | `LEADONG_SLOW_MO` | 覆盖 Playwright 操作延迟，单位毫秒，必须为非负整数；旧 `AIBLOCK_SLOWMO` 也可作为后备 |
 
+如果 Linux/CI 环境禁止出站 TCP 80，预览入口可能从 HTTPS 重定向到 HTTP 并超时。这是环境限制。可选 workaround：`LEADONG_HTTPS_UPGRADE_HOSTS=website.leadong.com npm run ai:modify -- --run-id linux-preview-01`。`network.httpsUpgradeHosts` 默认 `[]`，环境变量接受逗号分隔的精确主机名（空值关闭）。启用后预览目标先升级到 HTTPS，context 路由将指定主机的 HTTP 请求通过 HTTPS 代理，并升级响应 Location；方法、请求头、请求体和响应状态/内容保持一致，覆盖 iframe 和 popup。未指定时 macOS 行为不变。HTTP 导航超时报告为 `preview_status: blocked-environment`，仍不算通过。
+
 ## 启用 CI
 
 CI 工作流模板位于 `ci/github-actions/offline-tests.yml`。启用时将其复制到 GitHub Actions 识别的目录：

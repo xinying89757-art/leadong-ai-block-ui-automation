@@ -31,14 +31,45 @@
       "retryFailedAtEnd": true,
       "maxEndRetries": 1
     },
-    "types": ["静态图文", "产品列表", "文章列表", "视频列表", "图册列表"],
-    "excludedTypes": ["产品详情", "图册详情", "文章详情", "视频详情"],
+    "types": [
+      "静态图文",
+      "产品列表",
+      "文章列表",
+      "视频列表",
+      "图册列表"
+    ],
+    "excludedTypes": [
+      "产品详情",
+      "图册详情",
+      "文章详情",
+      "视频详情"
+    ],
     "inputMode": "文字描述",
     "generationMode": "快速模式",
     "generationModes": [
-      { "key": "quick", "label": "快速模式", "aliases": [], "expectedCost": 6, "heading": "AI Static Text Quick Mode Regression" },
-      { "key": "advanced", "label": "进阶模式", "aliases": ["高级模式"], "expectedCost": 15, "heading": "AI Static Text Advanced Mode Regression" },
-      { "key": "deep", "label": "深度模式", "aliases": [], "expectedCost": 30, "heading": "AI Static Text Deep Mode Regression" }
+      {
+        "key": "quick",
+        "label": "快速模式",
+        "aliases": [],
+        "expectedCost": 6,
+        "heading": "AI Static Text Quick Mode Regression"
+      },
+      {
+        "key": "advanced",
+        "label": "进阶模式",
+        "aliases": [
+          "高级模式"
+        ],
+        "expectedCost": 15,
+        "heading": "AI Static Text Advanced Mode Regression"
+      },
+      {
+        "key": "deep",
+        "label": "深度模式",
+        "aliases": [],
+        "expectedCost": 30,
+        "heading": "AI Static Text Deep Mode Regression"
+      }
     ],
     "generationTimeoutMs": 180000,
     "generationStatusRefreshIntervalMs": 30000,
@@ -88,9 +119,21 @@
       "pointsPollIntervalMs": 2000,
       "pointsTimeoutMs": 60000,
       "inputModes": [
-        { "key": "text", "label": "文字描述", "heading": "AI Input Text Regression" },
-        { "key": "image", "label": "上传图片", "heading": "AI Input Image Regression" },
-        { "key": "url", "label": "提供网址", "heading": "AI Input URL Regression" }
+        {
+          "key": "text",
+          "label": "文字描述",
+          "heading": "AI Input Text Regression"
+        },
+        {
+          "key": "image",
+          "label": "上传图片",
+          "heading": "AI Input Image Regression"
+        },
+        {
+          "key": "url",
+          "label": "提供网址",
+          "heading": "AI Input URL Regression"
+        }
       ]
     },
     "fullPageRegression": {
@@ -101,16 +144,21 @@
       "autoRetryFailed": true,
       "maxGenerationRetries": 1,
       "pageNamePrefix": "AI整页回归-",
-    "pagePathPrefix": "ai-full-page-regression-",
-    "editorStabilizeMs": 5000,
-    "generationStatusRefreshIntervalMs": 30000,
-    "maxGenerationRefreshes": 40,
-    "generationTimeoutMs": 1200000,
-    "applicationTimeoutMs": 300000,
-    "applicationStableMs": 3000,
-    "applicationPollIntervalMs": 500,
+      "pagePathPrefix": "ai-full-page-regression-",
+      "editorStabilizeMs": 5000,
+      "generationStatusRefreshIntervalMs": 30000,
+      "maxGenerationRefreshes": 40,
+      "generationTimeoutMs": 1200000,
+      "applicationTimeoutMs": 300000,
+      "applicationStableMs": 3000,
+      "applicationPollIntervalMs": 500,
       "requireSectionLabels": false,
-      "sections": ["Products", "Why Choose Us", "Customer Stories", "Contact Us"]
+      "sections": [
+        "Products",
+        "Why Choose Us",
+        "Customer Stories",
+        "Contact Us"
+      ]
     },
     "historyReuseRegression": {
       "enabled": true,
@@ -123,7 +171,7 @@
       "blockPageNamePrefix": "AI生成记录区块回归-",
       "blockPagePathPrefix": "ai-history-block-",
       "editorStabilizeMs": 5000,
-    "editorNotReadyGraceMs": 10000,
+      "editorNotReadyGraceMs": 10000,
       "generationStatusRefreshIntervalMs": 30000,
       "maxGenerationRefreshes": 40,
       "generationTimeoutMs": 1200000,
@@ -235,7 +283,10 @@
       "enabled": true,
       "type": "复合区块",
       "staticType": "静态图文",
-      "dynamicTypes": ["产品列表", "产品分类"],
+      "dynamicTypes": [
+        "产品列表",
+        "产品分类"
+      ],
       "inputMode": "文字描述",
       "generationMode": "深度模式",
       "promptPolishEnabled": true,
@@ -291,17 +342,53 @@
     "followupPages": [
       {
         "number": 2,
-        "types": ["下载列表", "FAQ 列表", "产品分类", "文章分类", "视频分类"]
+        "types": [
+          "下载列表",
+          "FAQ 列表",
+          "产品分类",
+          "文章分类",
+          "视频分类"
+        ]
       },
       {
         "number": 3,
-        "types": ["图册分类", "下载分类", "FAQ 分类", "产品筛选", "导航"]
+        "types": [
+          "图册分类",
+          "下载分类",
+          "FAQ 分类",
+          "产品筛选",
+          "导航"
+        ]
       }
     ],
     "detailPages": [
-      { "type": "文章详情", "systemPage": "News Detail", "module": "文章", "moduleId": "article", "listPage": "管理文章", "titleCell": 1, "marker": "AI Article Detail Regression" },
-      { "type": "图册详情", "systemPage": "Gallery Detail", "module": "图册", "moduleId": "gallery", "listPage": "管理图册", "titleCell": 1, "marker": "AI Gallery Detail Regression" },
-      { "type": "视频详情", "systemPage": "Video Detail", "module": "视频", "moduleId": "video", "listPage": "管理视频", "titleCell": 2, "marker": "AI Video Detail Regression" }
+      {
+        "type": "文章详情",
+        "systemPage": "News Detail",
+        "module": "文章",
+        "moduleId": "article",
+        "listPage": "管理文章",
+        "titleCell": 1,
+        "marker": "AI Article Detail Regression"
+      },
+      {
+        "type": "图册详情",
+        "systemPage": "Gallery Detail",
+        "module": "图册",
+        "moduleId": "gallery",
+        "listPage": "管理图册",
+        "titleCell": 1,
+        "marker": "AI Gallery Detail Regression"
+      },
+      {
+        "type": "视频详情",
+        "systemPage": "Video Detail",
+        "module": "视频",
+        "moduleId": "video",
+        "listPage": "管理视频",
+        "titleCell": 2,
+        "marker": "AI Video Detail Regression"
+      }
     ]
   },
   "timeouts": {
@@ -364,19 +451,54 @@
     "aiFilterSettingsPanelSelector": ".block-setting-panel, .backstage-setting-panel, .siteblocks-setting-panel, .right-setting-panel, .backstage-right-panel, .modules-setting-container .el-drawer.open, .modules-setting-container .el-drawer:visible, .phoenix-block-drawer-container .el-drawer.open, .phoenix-block-drawer-container .el-drawer:visible",
     "aiFilterSelectAllSelector": "input[type='checkbox']",
     "aiFilterApplySelector": "button:has-text('应用'), a:has-text('应用'), .submit",
-    "pageMenuTexts": ["^页面\\s*[:：]"],
-    "customPageTexts": ["^自定义页面$"],
-    "newPageTexts": ["新建页面"],
-    "editor3CardTexts": ["网页编辑器3\\.0", "继续使用当前网页编辑器"],
-    "editorCreateTexts": ["^创建页面$"],
-    "blankPageTexts": ["添加空白页"],
-    "templateConfirmTexts": ["^选取$"],
-    "pageSettingsTexts": ["^页面设置$"],
-    "pageNameLabels": ["页面名称", "名称"],
-    "pageNamePlaceholders": ["请输入页面名称", "页面名称"],
-    "pagePathLabels": ["页面地址", "页面路径", "URL"],
-    "pagePathPlaceholders": ["请输入页面地址", "请输入页面路径", "页面地址", "页面路径"],
-    "createConfirmTexts": ["^确定$", "^创建$"],
+    "pageMenuTexts": [
+      "^页面\\s*[:：]"
+    ],
+    "customPageTexts": [
+      "^自定义页面$"
+    ],
+    "newPageTexts": [
+      "新建页面"
+    ],
+    "editor3CardTexts": [
+      "网页编辑器3\\.0",
+      "继续使用当前网页编辑器"
+    ],
+    "editorCreateTexts": [
+      "^创建页面$"
+    ],
+    "blankPageTexts": [
+      "添加空白页"
+    ],
+    "templateConfirmTexts": [
+      "^选取$"
+    ],
+    "pageSettingsTexts": [
+      "^页面设置$"
+    ],
+    "pageNameLabels": [
+      "页面名称",
+      "名称"
+    ],
+    "pageNamePlaceholders": [
+      "请输入页面名称",
+      "页面名称"
+    ],
+    "pagePathLabels": [
+      "页面地址",
+      "页面路径",
+      "URL"
+    ],
+    "pagePathPlaceholders": [
+      "请输入页面地址",
+      "请输入页面路径",
+      "页面地址",
+      "页面路径"
+    ],
+    "createConfirmTexts": [
+      "^确定$",
+      "^创建$"
+    ],
     "pageCreateResponseUrlIncludes": "/phoenix/page/setting",
     "contentAddSelectors": [
       "[title='添加区块到内容区']",
@@ -384,16 +506,48 @@
       "[data-title='添加区块到内容区']",
       "a.backstage-creatmodules-addbtn"
     ],
-    "contentAddTexts": ["^添加区块到内容区$"],
-    "blockSearchPlaceholders": ["请输入区块ID或标签，进行搜索"],
-    "addButtonTexts": ["^\\+?\\s*添加$"],
-    "noBlockResultTexts": ["暂无数据", "无数据", "没有数据", "没有数据了", "没有找到", "无搜索结果", "暂无相关"],
-    "saveTexts": ["^保存$"],
-    "saveSuccessTexts": ["保存成功", "已保存", "保存完成"],
-    "publishTexts": ["^发布"],
-    "publishConfirmTexts": ["发布网站", "立即发布", "^确定$"],
-    "publishSuccessTexts": ["发布成功", "发布完成"],
-    "deleteBlockTexts": ["^删除$", "删除区块"],
+    "contentAddTexts": [
+      "^添加区块到内容区$"
+    ],
+    "blockSearchPlaceholders": [
+      "请输入区块ID或标签，进行搜索"
+    ],
+    "addButtonTexts": [
+      "^\\+?\\s*添加$"
+    ],
+    "noBlockResultTexts": [
+      "暂无数据",
+      "无数据",
+      "没有数据",
+      "没有数据了",
+      "没有找到",
+      "无搜索结果",
+      "暂无相关"
+    ],
+    "saveTexts": [
+      "^保存$"
+    ],
+    "saveSuccessTexts": [
+      "保存成功",
+      "已保存",
+      "保存完成"
+    ],
+    "publishTexts": [
+      "^发布"
+    ],
+    "publishConfirmTexts": [
+      "发布网站",
+      "立即发布",
+      "^确定$"
+    ],
+    "publishSuccessTexts": [
+      "发布成功",
+      "发布完成"
+    ],
+    "deleteBlockTexts": [
+      "^删除$",
+      "删除区块"
+    ],
     "blockRootTemplates": [
       "[data-block-id='{id}']",
       "[data-blockid='{id}']",
@@ -402,7 +556,19 @@
       "[data-component-id='{id}']",
       "[id='{id}']"
     ],
-    "loadingSelectors": [".loading", ".is-loading", "[aria-busy='true']"],
-    "renderErrorTexts": ["加载失败", "渲染失败", "组件异常", "区块异常"]
+    "loadingSelectors": [
+      ".loading",
+      ".is-loading",
+      "[aria-busy='true']"
+    ],
+    "renderErrorTexts": [
+      "加载失败",
+      "渲染失败",
+      "组件异常",
+      "区块异常"
+    ]
+  },
+  "network": {
+    "httpsUpgradeHosts": []
   }
 }

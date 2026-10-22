@@ -7,6 +7,8 @@ import { pageCreationRequest, pageCreationResult, pagePath, comparePageIdentity 
 import { authConfig, automaticLogin, dismissBlockingModals, ensureAuthenticated, isLoginPage } from "./auth.mjs";
 import { browserLaunchOptions } from "./browser-options.mjs";
 
+import { installHttpsUpgrade, httpsUpgradeHosts } from "./network-https-upgrade.mjs";
+
 function regex(source) {
   return new RegExp(source, "i");
 }
@@ -143,6 +145,7 @@ export async function launchEditorBrowser(config, options = {}) {
     profileDir,
     browserOptions,
   );
+  await installHttpsUpgrade(context, httpsUpgradeHosts(config));
   const pages = context.pages();
   const page = pages.find((candidate) =>
     candidate.url().includes("/phoenix/pagebuilder"),

@@ -6,6 +6,7 @@ import { fillAndVerify, pollUntil } from './wait-utils.mjs';
 import { committedAiSnapshot, isTemporaryAiFrame, waitForAiCommit } from './ai-canvas-commit.mjs';
 import { comparePageIdentity } from './page-identity.mjs';
 import { assertFlowState, assertCreditDelta, flowConfig, flowPaths, readFlowJson, writeFlowJson, renderFlowReport, previewTarget, selectOwnedHistoryRecord } from './ai-new-flow-state.mjs';
+import { upgradeHttpUrl, previewFailureStatus } from './network-https-upgrade.mjs';
 export const visible = locator => locator.isVisible().catch(() => false);
 export const wait = (check, timeoutMs, message) => pollUntil(check, { timeoutMs, intervalMs: 250, message });
 export class NewFlowAutomation {
@@ -265,10 +266,29 @@ export class NewFlowAutomation {
     step.reopen_verified = true; await this.shot(`${step.key}-saved-reopened`, step);
     const link = this.editor.page.locator('.clickToPreview a').first();
     const href = await link.getAttribute('href');
-    const target = previewTarget(href, this.editor.page.url());
+    let target = upgradeHttpUrl(previewTarget(href, this.editor.page.url()), this.config.network?.httpsUpgradeHosts);
+    step.preview_target = target;
+    // First try the HTTPS form of the final redirect destination directly.
+    // The context shim remains available for HTTP resources or later hops.
+    if (this.config.network?.httpsUpgradeHosts?.length) {
+      const response = await this.editor.page.context().request.get(target, { maxRedirects: 0, timeout: this.mode.commitTimeoutMs });
+      try {
+        const location = response.headers().location;
+        if (response.status() >= 300 && response.status() < 400 && location) {
+          const redirected = new URL(location, target).href;
+          const upgraded = upgradeHttpUrl(redirected, this.config.network.httpsUpgradeHosts);
+          if (upgraded !== redirected) {
+            target = upgraded;
+            step.preview_direct_https = { status: response.status(), host: new URL(target).host, path: new URL(target).pathname };
+          }
+        }
+      } finally { await response.dispose(); }
+    }
     // Read the editor's own preview link in a dedicated tab. The legacy
     // toolbar suppresses native popup navigation in some headless sessions.
     const preview = await this.editor.page.context().newPage();
+    const navigationUrls = [];
+    preview.on('request', request => { if (request.isNavigationRequest()) navigationUrls.push(request.url()); });
     try {
       await preview.goto(target, { waitUntil: 'domcontentloaded', timeout: this.mode.commitTimeoutMs });
       await wait(async () => {
@@ -278,8 +298,11 @@ export class NewFlowAutomation {
         return false;
       }, this.mode.commitTimeoutMs, `Preview missing ${token}`);
       const file = path.join(this.paths.report, `${step.key}-preview.png`);
-      await preview.screenshot({ path: file }); step.evidence.push(file); step.preview_verified = true;
+      await preview.screenshot({ path: file }); step.evidence.push(file); step.preview_verified = true; step.preview_status = 'passed';
     } catch (error) {
+      const failedUrls = [preview.url(), target, ...navigationUrls];
+      step.preview_status = previewFailureStatus(error, failedUrls);
+      step.preview_message = step.preview_status === 'blocked-environment' ? 'HTTP preview navigation timed out: this environment blocks outbound TCP port 80. Enable LEADONG_HTTPS_UPGRADE_HOSTS for the preview host.' : error.message;
       step.preview_failure_details = { host: new URL(target).host, path: new URL(target).pathname, error: error.message };
       const file = path.join(this.paths.report, `${step.key}-preview-unavailable.png`);
       if (await preview.screenshot({ path: file, timeout: 5000 }).then(() => true).catch(() => false)) step.evidence.push(file);

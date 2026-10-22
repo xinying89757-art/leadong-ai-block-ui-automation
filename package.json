@@ -71,7 +71,7 @@
     "ai:cleanup": "node src/ai-cli.mjs lifecycle:cleanup",
     "ai:restore": "node src/ai-cli.mjs lifecycle:restore",
     "ai:lifecycle:status": "node src/ai-cli.mjs lifecycle:status",
-    "test": "node --test --test-timeout=120000",
+    "test": "node --test --test-timeout=120000 test/*.test.mjs",
     "test:ai-stability-ui": "node scripts/verify-ai-stability.mjs",
     "ai:verify-fixes": "node scripts/verify-ai-regression-fixes.mjs",
     "test:ai-commit-ui": "node scripts/verify-ai-commit.mjs",
