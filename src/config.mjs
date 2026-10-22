@@ -5,25 +5,6 @@ import { fileURLToPath } from "node:url";
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
 export const projectRoot = path.resolve(sourceDir, "..");
 
-async function loadLocalEnvironment() {
-  let contents;
-  try {
-    contents = await readFile(path.join(projectRoot, ".env.local"), "utf8");
-  } catch (error) {
-    if (error.code === "ENOENT") return;
-    throw error;
-  }
-  for (const line of contents.split(/\r?\n/)) {
-    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
-    if (!match || process.env[match[1]] !== undefined) continue;
-    let value = match[2];
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-      value = value.slice(1, -1);
-    }
-    process.env[match[1]] = value;
-  }
-}
-
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -47,17 +28,15 @@ function resolveProjectPath(value) {
 }
 
 export async function loadConfig(overridePath = "config/run.json") {
-  await loadLocalEnvironment();
   const defaults = await readJson(path.resolve(projectRoot, "config/default.json"));
   const override = overridePath ? await readJson(resolveProjectPath(overridePath)) : {};
   const config = deepMerge(defaults, override);
-  config.rankingWorkbook = resolveProjectPath(config.rankingWorkbook);
-  config.inputCsv = config.rankingWorkbook;
-  for (const key of ["userDataDir", "stateFile", "aiStateFile", "aiRemainingStateDir", "aiDetailStateDir", "aiLifecycleDir", "aiRegressionReportsDir", "artifactsDir", "reportsDir"]) {
+  for (const key of ["userDataDir", "aiStateFile", "aiRemainingStateDir", "aiDetailStateDir", "aiLifecycleDir", "aiRegressionReportsDir", "artifactsDir"]) {
     config.paths[key] = resolveProjectPath(config.paths[key]);
   }
-  if (config.ai?.inputModeRegression?.imagePath) {
-    config.ai.inputModeRegression.imagePath = resolveProjectPath(config.ai.inputModeRegression.imagePath);
+  const testImagePath = process.env.AIBLOCK_TEST_IMAGE || config.ai?.inputModeRegression?.imagePath;
+  if (testImagePath) {
+    config.ai.inputModeRegression.imagePath = resolveProjectPath(testImagePath);
   }
   if (config.auth?.configPath) {
     config.auth.configPath = resolveProjectPath(config.auth.configPath);
@@ -80,7 +59,7 @@ export async function loadConfig(overridePath = "config/run.json") {
   validateImageGalleryRegression(config.ai.imageGalleryRegression);
   validateCompositeRegression(config.ai.compositeRegression);
   validateRegressionSuite(config.ai);
-  for (const key of ["rankingWorkbook", "rankingSheetName", "editorUrl", "siteName", "siteLanguage", "publicBaseUrl"]) {
+  for (const key of ["editorUrl", "siteName", "siteLanguage", "publicBaseUrl"]) {
     if (!config[key]) throw new Error(`配置缺少 ${key}`);
   }
   new URL(config.publicBaseUrl);
@@ -548,16 +527,6 @@ export function validateCompositeRegression(mode) {
     for (const key of ['interactionTimeoutMs', 'stableMs']) if (!Number.isInteger(linkage[key]) || linkage[key] <= 0) throw new Error(`分类联动 ${key} 必须为正整数`);
   }
   return mode;
-}
-
-export function pageDescriptor(config, pageNumber) {
-  const suffix = String(pageNumber).padStart(3, "0");
-  return {
-    number: pageNumber,
-    name: `${config.pageNamePrefix}${suffix}`,
-    path: `/${config.pagePathPrefix}${suffix}`,
-    publicUrl: new URL(`/${config.pagePathPrefix}${suffix}`, config.publicBaseUrl).toString(),
-  };
 }
 
 export function aiPageDescriptor(config, pageNumber = 1) {

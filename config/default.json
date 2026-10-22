@@ -1,6 +1,4 @@
 {
-  "rankingWorkbook": "inputs/区块排名.xlsx",
-  "rankingSheetName": "Sheet1",
   "editorUrl": "https://website.leadong.com/phoenix/pagebuilder/layout",
   "siteListUrlIncludes": "/website.html",
   "siteName": "xujiying-ai区块",
@@ -23,8 +21,6 @@
     "publishTimeoutMs": 180000
   },
   "preDeferredNameKeywords": [],
-  "pageNamePrefix": "区块排名H测试-",
-  "pagePathPrefix": "block-ranking-heading-test-",
   "ai": {
     "enabled": true,
     "blocksPerPage": 5,
@@ -69,7 +65,7 @@
       "blocksPerPage": 3,
       "pageNamePrefix": "AI输入方式回归-",
       "pagePathPrefix": "ai-input-modes-regression-",
-      "imagePath": "/Users/xinying/Desktop/测试图片.png",
+      "imagePath": "fixtures/images/ai-block-test-image.png",
       "referenceUrl": "https://www.udearspace.com/",
       "pointsPollIntervalMs": 2000,
       "pointsTimeoutMs": 60000,
@@ -305,7 +301,7 @@
     "slowMo": 180
   },
   "auth": {
-    "configPath": "../../outputs/BUG1004949-admin-login-20260916/config/admin-login.json",
+    "configPath": null,
     "storageStatePath": ".auth/admin.storage.json",
     "adminUrl": "https://www.leadong.com/website.html",
     "loginUrl": "https://www.leadong.com/login.html",
@@ -314,14 +310,12 @@
   },
   "paths": {
     "userDataDir": ".auth/chrome-profile",
-    "stateFile": ".state/ranking-heading-run-state.json",
     "aiStateFile": ".state/ai-block-type-run-state.json",
     "aiRemainingStateDir": ".state/ai-remaining",
     "aiDetailStateDir": ".state/ai-detail",
     "aiLifecycleDir": ".state/ai-lifecycle",
     "aiRegressionReportsDir": "reports/ai-regression",
-    "artifactsDir": "artifacts/ranking-heading",
-    "reportsDir": "reports/ranking-heading"
+    "artifactsDir": "artifacts/ranking-heading"
   },
   "selectors": {
     "siteCardSelector": ".mySiteBox",

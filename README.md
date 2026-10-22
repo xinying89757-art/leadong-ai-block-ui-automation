@@ -36,7 +36,11 @@ set +a
 
 Set `BUG1004949_ADMIN_ACCOUNT` and `BUG1004949_ADMIN_PASSWORD`, or set `BUG1004949_ADMIN_CONFIG` to a JSON file outside this repository containing `account` and `password`. `.env.local`, external credential files, Playwright login state, and runtime state are ignored by Git. Do not paste credentials into source, reports, or commits.
 
-The image-input flow expects a local test image. Set `ai.inputModeRegression.imagePath` in `config/default.json` to a file available on your machine before running that flow. The HTML upload fixture is included at `fixtures/html-upload/pulse-dashboard.html`.
+图片输入流程默认使用仓库内的 `fixtures/images/ai-block-test-image.png`。如需指定其他本地图片，可设置 `AIBLOCK_TEST_IMAGE` 为绝对路径或仓库相对路径。配置中的相对路径始终以仓库根目录为基准，与当前工作目录无关。
+
+`BUG1004949_ADMIN_CONFIG` 为可选项，可指向包含 `account` 和 `password` 的外部 JSON 文件。未设置时，登录流程使用 `BUG1004949_ADMIN_ACCOUNT` 和 `BUG1004949_ADMIN_PASSWORD`。只有流程确实需要登录时才要求提供账号密码。AI 区块流程不会读取旧的 `rankingWorkbook` 配置，该项已移除。
+
+The HTML upload fixture is included at `fixtures/html-upload/pulse-dashboard.html`.
 
 ## Common commands
 
