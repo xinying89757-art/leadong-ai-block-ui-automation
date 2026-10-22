@@ -19,6 +19,25 @@ export function aiblockEnv(name, fallback) {
   return legacyValue !== undefined && legacyValue !== "" ? legacyValue : fallback;
 }
 
+async function loadLocalEnvironment() {
+  let contents;
+  try {
+    contents = await readFile(path.join(projectRoot, ".env.local"), "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+  for (const line of contents.split(/\r?\n/)) {
+    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+    if (!match || process.env[match[1]] !== undefined) continue;
+    let value = match[2];
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    process.env[match[1]] = value;
+  }
+}
+
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -42,6 +61,7 @@ function resolveProjectPath(value) {
 }
 
 export async function loadConfig(overridePath = "config/run.json") {
+  await loadLocalEnvironment();
   const defaults = await readJson(path.resolve(projectRoot, "config/default.json"));
   const override = overridePath ? await readJson(resolveProjectPath(overridePath)) : {};
   const config = deepMerge(defaults, override);

@@ -26,13 +26,7 @@ npm ci
 cp .env.example .env.local
 ```
 
-在本地编辑 `.env.local`，运行命令前将变量载入当前 shell：
-
-```sh
-set -a
-source .env.local
-set +a
-```
+在本地编辑 `.env.local`。运行 CLI 时会自动读取仓库根目录下的 `.env.local`（已存在于 shell 中的同名变量优先，不会被覆盖）。
 
 管理员登录配置如下。`AIBLOCK_ADMIN_CONFIG` 指向的 JSON 文件应位于仓库外，并包含 `account` 和 `password`。新变量优先于旧变量；旧的 `BUG1004949_*` 变量仍作为后备兼容。`.env.local`、外部凭据文件、Playwright 登录状态和运行状态均为本地文件，不要将凭据写入源码、报告或提交记录。
 
