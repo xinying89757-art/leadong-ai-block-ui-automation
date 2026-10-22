@@ -406,7 +406,8 @@
       "pagePathPrefix": "ai-validation-regression-",
       "mode": "quick",
       "generationTimeoutMs": 180000,
-      "commitTimeoutMs": 60000
+      "commitTimeoutMs": 60000,
+      "usageRecordsFallbackHost": ""
     }
   },
   "timeouts": {

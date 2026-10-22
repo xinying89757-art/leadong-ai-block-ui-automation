@@ -46,3 +46,11 @@ test('validation state is isolated, resumable and restricted to quick-mode credi
  const changed=structuredClone(config);changed.ai.validationRegression.mode='advanced';assert.throws(()=>flowConfig(changed,'validation'),/quick/);
  state.page.name='existing';assert.throws(()=>assertFlowState(state,config,'validation','unit-validation'),/ownership/);
 });
+test('usage-viewer workaround is opt-in, limited to the known path and authenticated editor host, preserving route/query',async()=>{
+ const {usageRecordsFallbackUrl}=await import('../src/ai-validation-state.mjs');
+ const editor='https://website.leadong.com/phoenix/pagebuilder/layout';
+ assert.equal(usageRecordsFallbackUrl('https://leadong.com/phoenix2/composite/aigc-resource/index.html?q=fixture#/usage','website.leadong.com',editor),'https://website.leadong.com/phoenix2/composite/aigc-resource/index.html?q=fixture#/usage');
+ assert.equal(usageRecordsFallbackUrl('https://leadong.com/phoenix2/composite/aigc-resource/index.html','',editor),null);
+ for(const url of ['https://elsewhere.invalid/phoenix2/composite/aigc-resource/index.html','https://leadong.com/other','http://leadong.com/phoenix2/composite/aigc-resource/index.html'])assert.equal(usageRecordsFallbackUrl(url,'website.leadong.com',editor),null);
+ assert.throws(()=>usageRecordsFallbackUrl('https://leadong.com/phoenix2/composite/aigc-resource/index.html','outside.invalid',editor),/editor host/);
+});

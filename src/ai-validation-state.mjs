@@ -35,3 +35,11 @@ export function selectMatchingUsageRecord(records,{startedAt,endedAt,expectedCos
   if(unique.length!==1) throw new Error(`Usage record match count ${unique.length}; expected one by time/type/points`);
   return unique[0];
 }
+/** Narrow opt-in workaround for the known bare-domain usage-viewer 403. */
+export function usageRecordsFallbackUrl(value,host,editorUrl) {
+  if(!host)return null;
+  const target=new URL(value),editor=new URL(editorUrl);
+  if(host!==editor.host)throw new Error('Usage viewer fallback must use the authenticated editor host');
+  if(target.protocol!=='https:'||target.hostname!=='leadong.com'||target.pathname!=='/phoenix2/composite/aigc-resource/index.html')return null;
+  target.host=host;return target.href;
+}

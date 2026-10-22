@@ -13,6 +13,7 @@ export function flowConfig(config, flow) {
   const value = config.ai[flows[flow].config];
   if (!value?.enabled) throw new Error(`${flow} is disabled`);
   if (flow === 'validation' && value.mode !== 'quick') throw new Error('Validation credit check requires quick mode');
+  if (flow === 'validation' && value.usageRecordsFallbackHost && value.usageRecordsFallbackHost !== new URL(config.editorUrl).host) throw new Error('Usage viewer fallback must use the authenticated editor host');
   for (const key of ['continuationTimeoutMs','fullscreenStableMs']) if (value[key] !== undefined && (!Number.isInteger(value[key]) || value[key] <= 0)) throw new Error(`Invalid ${key}`);
   for (const key of ['generationTimeoutMs', 'commitTimeoutMs']) if (!Number.isInteger(value[key]) || value[key] <= 0) throw new Error(`Invalid ${key}`);
   const keys = flow === 'modify' ? value.modes : [value.mode];

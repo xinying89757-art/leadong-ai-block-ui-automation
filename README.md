@@ -137,7 +137,7 @@ A run exits unsuccessfully when an application or preview assertion fails. A com
 
 ## 生成历史（Flow 3）
 
-`ai:history` 在独立 `AI生成历史回归-<runId>` 页面生成一个快速模式区块，检查生成记录徽标 +1、全部分页记录的时间倒序、状态/输入方式/模式/类型/点数徽标，以及自己的完成记录「＋插入」后的画布标题与零额外扣点。若历史中有真实的可恢复组合失败记录，则在测试页面中执行「继续生成」，等待该记录完成并记录扣点；没有可用失败记录时明确标记 skipped，不伪造失败。不会发布。
+`ai:history` 在独立 `AI生成历史回归-<runId>` 页面生成一个快速模式区块，检查生成记录徽标 +1、全部分页记录的时间倒序、状态/输入方式/模式/类型/点数徽标，以及自己的完成记录「＋插入」后的画布标题与零额外扣点。若历史中有真实的可恢复组合失败记录，则在测试页面中执行「继续生成」，保持任务界面打开，检查进度/状态/结果并记录实际扣点；未得到可用结果或可观察终态的超时仍记失败；没有可用失败记录时明确标记 skipped，不伪造失败。不会发布。
 
 ```sh
 LEADONG_HTTPS_UPGRADE_HOSTS=website.leadong.com npm run ai:history -- --run-id history-example
@@ -160,3 +160,5 @@ npm run ai:validation:cleanup -- --run-id validation-example --apply
 ```
 
 配置为 `ai.validationRegression`；积分场景固定快速模式。小型真实 GIF/BMP 在 `fixtures/validation/`；有效 PNG 在 `fixtures/images/test-image.png`；大 PNG 运行时生成到 gitignored `tmp/validation/<runId>/`。状态、创建回执、断点和报告遵循其它新流程模式，报告在 `reports/ai-validation/<runId>/`。如果无效输入意外触发生成，记录真实失败及扣点/历史证据；恢复不会重做这笔意外生成。run/resume/cleanup 有 `--apply` 保护。
+
+本箱实测「查看使用记录」使用的裸域 `leadong.com` 查看器返回 403，而相同路径在已登录的编辑器域 `website.leadong.com` 返回 200。可选配置 `ai.validationRegression.usageRecordsFallbackHost: "website.leadong.com"`（默认空字符串，关闭）：只在该已知 HTTPS 查看器路径返回 403 时切换到编辑器域，保留路径、查询及前端路由。报告同时保留原始 403 和实际使用记录截图；这不代表原始入口正常。可将该字段写入独立运行配置，通过 `--config` 使用；不需要修改 `.env.local`。

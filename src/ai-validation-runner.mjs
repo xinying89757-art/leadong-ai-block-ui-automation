@@ -3,14 +3,19 @@ import {NewFlowAutomation,wait,visible} from './ai-new-flow-runner.mjs';
 import {resolveProjectPath} from './config.mjs';
 import {fillAndVerify} from './wait-utils.mjs';
 import {parseHistoryBadge} from './ai-new-flow-state.mjs';
-import {assertNoChargeEvidence,parseUsageRecord,selectMatchingUsageRecord} from './ai-validation-state.mjs';
+import {assertNoChargeEvidence,parseUsageRecord,selectMatchingUsageRecord,usageRecordsFallbackUrl} from './ai-validation-state.mjs';
 import {writeOversizePng} from './validation-fixtures.mjs';
 
 export class AiValidationAutomation extends NewFlowAutomation {
   constructor(editor,config,runId) {super(editor,config,runId,'validation');}
   async freshForm(inputMode='文字描述') {
     await this.base.closeAiResult();
-    const frame=await this.base.openAiDialog();this.base.aiConfig.inputMode='文字描述';await this.prepare(frame,this.mode.mode);
+    await this.ownPage();
+    let frame=await this.base.openAiDialog();
+    try {await this.assertOwnedIdentity();} catch {
+      await this.base.closeAiResult();await this.ownPage();frame=await this.base.openAiDialog();await this.assertOwnedIdentity();
+    }
+    this.base.aiConfig.inputMode='文字描述';await this.prepare(frame,this.mode.mode);
     this.base.aiConfig.inputMode=inputMode;await this.base.selectInputMode(frame);
     await wait(async()=>!await frame.locator('.el-message--error:visible,.el-notification--error:visible').count(),5000,'Previous validation toast did not close').catch(()=>{});
     return frame;
@@ -25,18 +30,20 @@ export class AiValidationAutomation extends NewFlowAutomation {
     const input=frame.locator(this.config.selectors.aiUploadFileSelector).first();
     const thumbnails=frame.locator(`${this.config.selectors.aiUploadPreviewSelector},img[src^="blob:"]`);
     let thumbnailsVisible=0;for(const item of await thumbnails.all())if(await visible(item))thumbnailsVisible++;
-    return {file_count:await input.evaluate(element=>element.files?.length??0),thumbnail_count:thumbnailsVisible,generate_disabled:await frame.locator(this.config.selectors.aiGenerateSelector).isDisabled()};
+    return {file_count:await input.count()?await input.evaluate(element=>element.files?.length??0):0,thumbnail_count:thumbnailsVisible,generate_disabled:await frame.locator(this.config.selectors.aiGenerateSelector).isDisabled()};
   }
   async checkInput(step) {
     if (step.unexpected_generation && step.generation_status !== 'pending') throw new Error('This invalid input already triggered a generation; resume will not repeat its charged operation. See the recorded request, balance and history evidence.');
     const image=['gif','bmp','oversize','valid-png'].includes(step.key),url=step.key.startsWith('invalid-url-');
     const frame=await this.freshForm(image?'上传图片':url?'提供网址':'文字描述');
+    step.scope_before=await this.editor.currentPageIdentity();await this.assertOwnedIdentity();
     step.before=await this.observation(frame);step.points_before=step.before.points;step.history_before=step.before.history;
     step.input_prompt=`Validation ${this.runId} ${step.key}: Create an English solar company hero block.`;
     await this.creditShot(frame,`${step.key}-before-credits`,step,step.points_before);
     const requests=[];
     const onRequest=request=>{
-      if(request.method()==='POST'&&/generat/i.test(new URL(request.url()).pathname)) {
+      const payload=request.postData()??'';
+      if(request.method()==='POST'&&/generat/i.test(new URL(request.url()).pathname)&&(step.key==='empty-prompt'||payload.includes(step.input_prompt)||payload.includes(JSON.stringify(step.input_prompt).slice(1,-1)))) {
         requests.push({path:new URL(request.url()).pathname,at:new Date().toISOString()});
       }
     };
@@ -99,6 +106,7 @@ export class AiValidationAutomation extends NewFlowAutomation {
       }
     }
     const current=this.base.aiFrame()??frame;
+    await this.assertOwnedIdentity();step.scope_after=await this.editor.currentPageIdentity();
     step.after=await this.observation(current);step.points_after=step.after.points;step.history_after=step.after.history;step.points_charged=step.points_before-step.points_after;
     await this.creditShot(current,`${step.key}-after-credits`,step,step.points_after);await this.persist();
     assertNoChargeEvidence(step.before,step.after);
@@ -115,7 +123,7 @@ export class AiValidationAutomation extends NewFlowAutomation {
         const ownHeaders=await table.locator('thead th').allInnerTexts();
         const headers=ownHeaders.length?ownHeaders:frameHeaders;
         const rows=await table.locator('tbody tr').evaluateAll(nodes=>nodes.map(node=>[...node.querySelectorAll('td')].map(cell=>cell.innerText)));
-        for(const cells of rows)try{parsed.push(parseUsageRecord(cells,headers));}catch{unparsed.push(cells);}
+        for(const cells of rows)try{parsed.push(parseUsageRecord(cells,headers));}catch{unparsed.push({headers,cells});}
       }
       const rows=await frame.locator('[role="row"]:visible,.usage-record-item:visible,.credit-record-item:visible').allInnerTexts();
       for(const text of rows)try{parsed.push(parseUsageRecord(text));}catch{unparsed.push(text);}
@@ -127,11 +135,26 @@ export class AiValidationAutomation extends NewFlowAutomation {
     if(!await visible(panel))await gear.click();
     await panel.waitFor({state:'visible'});
     const before=new Set(this.editor.page.context().pages());
+    step.usage_link=await panel.getByText('查看使用记录',{exact:true}).evaluate(element=>{const a=element.closest('a');if(!a?.href)return {kind:'handler'};const url=new URL(a.href,location.href);return {host:url.host,path:url.pathname,protocol:url.protocol};});
     await panel.getByText('查看使用记录',{exact:true}).click();
-    let usagePage=this.editor.page;
+    let usagePage=this.editor.page,fallbackAttempted=false;
     let usageFailure;
     try { await wait(async()=>{
       usagePage=this.editor.page.context().pages().find(page=>!before.has(page))??this.editor.page;
+      try {const url=new URL(usagePage.url());step.usage_destination={host:url.host,path:url.pathname,protocol:url.protocol};}catch{}
+      if(await usagePage.getByText('403 Forbidden',{exact:true}).isVisible().catch(()=>false)) {
+        const fallback=!fallbackAttempted && usageRecordsFallbackUrl(usagePage.url(),this.mode.usageRecordsFallbackHost,this.config.editorUrl);
+        if(fallback) {
+          fallbackAttempted=true;
+          const screenshot=path.join(this.paths.report,'usage-original-403.png');await usagePage.screenshot({path:screenshot,timeout:5000});step.evidence.push(screenshot);
+          step.usage_workaround={from_host:new URL(usagePage.url()).host,to_host:new URL(fallback).host,path:new URL(fallback).pathname,reason:'bare-domain viewer returned 403'};
+          this.state.product_observations ??= [];this.state.product_observations.push({kind:'usage-record-link-403',step:step.key,screenshot,...step.usage_workaround});
+          await this.persist();
+          await usagePage.goto(fallback,{waitUntil:'domcontentloaded',timeout:20000}).catch(()=>{throw new Error('Usage viewer fallback navigation failed');});
+          step.usage_status='fallback-loaded';return false;
+        }
+        step.usage_status='blocked-access';throw new Error('Usage records returned 403 Forbidden; access is blocked');
+      }
       let rows;
       try {rows=await this.usageRows(usagePage);}catch{step.usage_load_retries=(step.usage_load_retries??0)+1;return false;}
       step.usage_rows=rows.parsed;step.unparsed_usage_rows=rows.unparsed;
@@ -158,10 +181,12 @@ export class AiValidationAutomation extends NewFlowAutomation {
       frame=await this.freshForm();
       step.prompt=`Create an English solar hero with the exact heading "${step.token}" and a Learn More button.`;
       await fillAndVerify(frame.locator(this.config.selectors.aiPromptSelector).first(),step.prompt);
+      await this.assertOwnedIdentity();step.scope_before=await this.editor.currentPageIdentity();
       await this.startCharge(frame,step,'quick-generate');
       step.generation_status='running';await this.persist();
       await this.base.submitBlockGeneration(frame,frame.locator(this.config.selectors.aiGenerateSelector),step.prompt,step);
       const result=await this.base.waitForGeneration(frame,step.prompt,0,this.mode.generationTimeoutMs,step);frame=result.frame??frame;
+      await this.assertOwnedIdentity();step.scope_after=await this.editor.currentPageIdentity();
       step.generation_status='succeeded';step.generation_completed_at=new Date().toISOString();await this.persist();
       await this.charge(frame,step,'quick-generate',this.generationMode(this.mode.mode).expectedCost);
     } else {

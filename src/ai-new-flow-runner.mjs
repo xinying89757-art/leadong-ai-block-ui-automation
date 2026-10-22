@@ -74,7 +74,7 @@ export class NewFlowAutomation {
     this.state.duration_ms = Date.parse(this.state.ended_at) - Date.parse(this.state.started_at);
     const step = this.state.steps.find(item => item.status === 'running') ?? this.activeStep;
     if (step) {
-      step.failure_reason = error.message; step.status = 'failed';
+      step.failure_reason ||= error.message; step.status = 'failed';
       const unresolved = (step.charges ?? []).filter(charge => !charge.passed);
       const frame = this.editor && this.base.aiFrame();
       if (frame && step.points_before !== undefined && step.points_after === undefined) {
