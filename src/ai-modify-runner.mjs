@@ -4,6 +4,10 @@ import { fillAndVerify } from './wait-utils.mjs';
 export class AiModifyAutomation extends NewFlowAutomation {
   constructor(editor, config, runId) { super(editor, config, runId, 'modify'); }
   async openModify(id) {
+    // Warm the 4.0 editor through its normal entry before using the canvas toolbar.
+    // A fresh browser can paint the toolbar while its iframe is still loading.
+    await this.base.openAiDialog();
+    await this.base.closeAiResult();
     await this.assertOwnedIdentity();
     const { frame, block } = await this.block(id);
     await block.scrollIntoViewIfNeeded();
@@ -29,7 +33,7 @@ export class AiModifyAutomation extends NewFlowAutomation {
     return ui;
   }
   async waitForModification(frame, step) {
-    const started = Date.now(); let historyOpened = false;
+    const started = Date.now(); let historyOpened = false, historyRefreshedAt = 0;
     return wait(async () => {
       const apply = frame.getByRole('button', { name: '应用区块', exact: true });
       if (!historyOpened && await visible(apply) && await apply.isEnabled()) return { mode: 'module', frame, control: apply };
@@ -41,12 +45,19 @@ export class AiModifyAutomation extends NewFlowAutomation {
         }
         const trigger = frame.locator(this.config.selectors.aiHistoryTriggerSelector);
         if (!(await trigger.getAttribute('class')).includes('active')) await trigger.click();
-        historyOpened = true;
+        historyOpened = true; historyRefreshedAt = Date.now();
       }
       const cards = frame.locator(this.config.selectors.aiHistoryCardSelector).filter({ hasText: step.prompt });
       const count = await cards.count();
       if (count > 1) throw new Error('Modification history is ambiguous');
-      if (!count) return false;
+      if (!count) {
+        // History opened while generation is in flight can retain an old page.
+        if (Date.now() - historyRefreshedAt > 10000) {
+          const trigger = frame.locator(this.config.selectors.aiHistoryTriggerSelector);
+          await trigger.click(); await trigger.click(); historyRefreshedAt = Date.now();
+        }
+        return false;
+      }
       const text = await cards.innerText();
       if (/生成失败|已自动退还/.test(text)) throw new Error('Platform reported modification generation failure');
       const insert = cards.getByRole('button', { name: /插入/ });

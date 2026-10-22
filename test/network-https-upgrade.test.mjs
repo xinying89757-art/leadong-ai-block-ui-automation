@@ -37,3 +37,7 @@ test('context proxy preserves method, headers, binary post body, status/body and
   assert.equal(fetched.options.method,'POST');assert.deepEqual(fetched.options.headers,headers);assert.equal(fetched.options.data,body);assert.equal(fetched.options.maxRedirects,0);
   assert.equal(fulfilled.status,302);assert.equal(fulfilled.headers.location,'https://a.example/final');assert.equal(fulfilled.body,body);assert.equal(disposed,true);
 });
+test('configuration host array and environment override resolve independently of process state', () => {
+  assert.deepEqual(httpsUpgradeHosts({network:{httpsUpgradeHosts:['A.example','a.example']}},{}),['a.example']);
+  assert.deepEqual(httpsUpgradeHosts({network:{httpsUpgradeHosts:['a.example']}},{LEADONG_HTTPS_UPGRADE_HOSTS:'b.example,c.example'}),['b.example','c.example']);
+});

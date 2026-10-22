@@ -268,6 +268,7 @@ export class NewFlowAutomation {
     const href = await link.getAttribute('href');
     let target = upgradeHttpUrl(previewTarget(href, this.editor.page.url()), this.config.network?.httpsUpgradeHosts);
     step.preview_target = target;
+    let downgradeLoop = false;
     // First try the HTTPS form of the final redirect destination directly.
     // The context shim remains available for HTTP resources or later hops.
     if (this.config.network?.httpsUpgradeHosts?.length) {
@@ -278,6 +279,7 @@ export class NewFlowAutomation {
           const redirected = new URL(location, target).href;
           const upgraded = upgradeHttpUrl(redirected, this.config.network.httpsUpgradeHosts);
           if (upgraded !== redirected) {
+            downgradeLoop = upgraded === target;
             target = upgraded;
             step.preview_direct_https = { status: response.status(), host: new URL(target).host, path: new URL(target).pathname };
           }
@@ -290,6 +292,7 @@ export class NewFlowAutomation {
     const navigationUrls = [];
     preview.on('request', request => { if (request.isNavigationRequest()) navigationUrls.push(request.url()); });
     try {
+      if (downgradeLoop) throw Object.assign(new Error('HTTPS preview redirects to the same HTTP URL; port 80 is blocked in this environment and the HTTPS upgrade would loop.'), { code: 'HTTPS_UPGRADE_DOWNGRADE_LOOP' });
       await preview.goto(target, { waitUntil: 'domcontentloaded', timeout: this.mode.commitTimeoutMs });
       await wait(async () => {
         for (const frame of preview.frames()) {
@@ -302,7 +305,7 @@ export class NewFlowAutomation {
     } catch (error) {
       const failedUrls = [preview.url(), target, ...navigationUrls];
       step.preview_status = previewFailureStatus(error, failedUrls);
-      step.preview_message = step.preview_status === 'blocked-environment' ? 'HTTP preview navigation timed out: this environment blocks outbound TCP port 80. Enable LEADONG_HTTPS_UPGRADE_HOSTS for the preview host.' : error.message;
+      step.preview_message = step.preview_status === 'blocked-environment' ? error.code === 'HTTPS_UPGRADE_DOWNGRADE_LOOP' ? error.message : 'HTTP preview navigation timed out: this environment blocks outbound TCP port 80. Enable LEADONG_HTTPS_UPGRADE_HOSTS for the preview host.' : error.message;
       step.preview_failure_details = { host: new URL(target).host, path: new URL(target).pathname, error: error.message };
       const file = path.join(this.paths.report, `${step.key}-preview-unavailable.png`);
       if (await preview.screenshot({ path: file, timeout: 5000 }).then(() => true).catch(() => false)) step.evidence.push(file);

@@ -23,6 +23,7 @@ export function rewriteUpgradeLocation(headers, hosts) {
   return Object.fromEntries(Object.entries(headers).map(([name, value]) => [name, name.toLowerCase() === 'location' ? upgradeHttpUrl(value, hosts) : value]));
 }
 export function previewFailureStatus(error, urls = []) {
+  if (error.code === 'HTTPS_UPGRADE_DOWNGRADE_LOOP') return 'blocked-environment';
   return urls.some(url => /^http:\/\//i.test(url ?? '')) && /ERR_CONNECTION_TIMED_OUT|timeout|timed out/i.test(error.message)
     ? 'blocked-environment' : 'failed';
 }
