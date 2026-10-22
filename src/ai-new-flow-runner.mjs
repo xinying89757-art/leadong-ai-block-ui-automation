@@ -241,6 +241,23 @@ export class NewFlowAutomation {
       if (observations.length < 100) observations.push({ elapsed_ms: Date.now() - started, ...value });
       return value;
     }, step.baseline, { timeoutMs: this.mode.commitTimeoutMs });
+    } catch (error) {
+      if (error.code === 'AI_COMMIT_UNCONFIRMED') {
+        this.state.product_observations ??= [];
+        const observation = { kind: 'direct-apply-missing-block', step: step.key, observed_at: new Date().toISOString(),
+          baseline: step.baseline, last_observation: step.last_commit_observation };
+        this.state.product_observations.push(observation);
+        observation.screenshot = await this.shot(`${step.key}-missing-block`, step);
+        try {
+          await this.editor.openCustomPage((this.currentPage ?? this.state.page).name);
+          await this.assertOwnedIdentity();
+          observation.reopened_snapshot = await wait(async () => {
+          const value = await this.snapshot(); return value.ready ? value : false;
+        }, 15000, 'Missing-block diagnostic canvas did not load').catch(() => null);
+          observation.reopened_screenshot = await this.shot(`${step.key}-missing-block-reopened`, step);
+        } catch (diagnosticError) { observation.diagnostic_error = diagnosticError.message; }
+      }
+      throw error;
     } finally {
       step.commit_wait_ms = Date.now() - started;
       observations.push({ elapsed_ms: step.commit_wait_ms, ...step.last_commit_observation });

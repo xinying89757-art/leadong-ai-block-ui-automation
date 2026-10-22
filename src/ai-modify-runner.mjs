@@ -33,7 +33,7 @@ export class AiModifyAutomation extends NewFlowAutomation {
     return ui;
   }
   async waitForModification(frame, step) {
-    const started = Date.now(); let historyOpened = false, historyRefreshedAt = 0;
+    const started = Date.now(); let historyOpened = false, historyRefreshedAt = 0, reloaded = false;
     return wait(async () => {
       const apply = frame.getByRole('button', { name: '应用区块', exact: true });
       if (!historyOpened && await visible(apply) && await apply.isEnabled()) return { mode: 'module', frame, control: apply };
@@ -53,8 +53,15 @@ export class AiModifyAutomation extends NewFlowAutomation {
       if (!count) {
         // History opened while generation is in flight can retain an old page.
         if (Date.now() - historyRefreshedAt > 10000) {
-          const trigger = frame.locator(this.config.selectors.aiHistoryTriggerSelector);
-          await trigger.click(); await trigger.click(); historyRefreshedAt = Date.now();
+          await this.base.closeAiResult();
+          if (!reloaded) {
+            await this.editor.page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+            await this.editor.openCustomPage((this.currentPage ?? this.state.page).name);
+            await this.assertOwnedIdentity(); reloaded = true;
+          }
+          frame = await this.openModify(step.before_block_id);
+          await frame.locator(this.config.selectors.aiHistoryTriggerSelector).click();
+          historyRefreshedAt = Date.now();
         }
         return false;
       }
