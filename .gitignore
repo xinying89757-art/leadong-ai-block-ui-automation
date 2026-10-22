@@ -1,0 +1,16 @@
+node_modules/
+.auth/
+.state/
+artifacts/
+output/
+reports/
+midscene_run/
+.playwright-cli/
+tmp/
+.env
+.env.*
+!.env.example
+admin-login.json
+admin.storage.json
+*.log
+.DS_Store
