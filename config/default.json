@@ -43,6 +43,25 @@
     "generationTimeoutMs": 180000,
     "generationStatusRefreshIntervalMs": 30000,
     "pageSwitchStableMs": 3000,
+    "modifyRegression": {
+      "enabled": true,
+      "pageNamePrefix": "AI修改回归-",
+      "pagePathPrefix": "ai-modify-regression-",
+      "modes": [
+        "quick",
+        "advanced"
+      ],
+      "generationTimeoutMs": 180000,
+      "commitTimeoutMs": 60000
+    },
+    "resultActionsRegression": {
+      "enabled": true,
+      "pageNamePrefix": "AI结果页回归-",
+      "pagePathPrefix": "ai-result-actions-regression-",
+      "mode": "quick",
+      "generationTimeoutMs": 180000,
+      "commitTimeoutMs": 60000
+    },
     "modePointRegression": {
       "enabled": true,
       "type": "静态图文",

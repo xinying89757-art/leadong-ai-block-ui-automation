@@ -75,7 +75,15 @@
     "test:ai-stability-ui": "node scripts/verify-ai-stability.mjs",
     "ai:verify-fixes": "node scripts/verify-ai-regression-fixes.mjs",
     "test:ai-commit-ui": "node scripts/verify-ai-commit.mjs",
-    "test:ai-report-ui": "node scripts/verify-ai-report.mjs"
+    "test:ai-report-ui": "node scripts/verify-ai-report.mjs",
+    "ai:modify": "node src/ai-modify-cli.mjs run --apply",
+    "ai:modify:resume": "node src/ai-modify-cli.mjs resume --apply",
+    "ai:modify:status": "node src/ai-modify-cli.mjs status",
+    "ai:modify:cleanup": "node src/ai-modify-cli.mjs cleanup",
+    "ai:result-actions": "node src/ai-result-actions-cli.mjs run --apply",
+    "ai:result-actions:resume": "node src/ai-result-actions-cli.mjs resume --apply",
+    "ai:result-actions:status": "node src/ai-result-actions-cli.mjs status",
+    "ai:result-actions:cleanup": "node src/ai-result-actions-cli.mjs cleanup"
   },
   "engines": {
     "node": ">=20"

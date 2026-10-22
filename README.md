@@ -108,3 +108,25 @@ npm run page:html-upload
 所有配置中的本地文件、状态和输出路径以仓库根目录解析，绝对路径保持原样。
 
 AI 生成模式与预期点数由 `ai.generationModes` 统一配置：快速模式 6 点、进阶模式 15 点（接受旧称“高级模式”）、深度模式 30 点。
+
+### Existing AI block modification and result actions
+
+Both flows use headless Chromium and create isolated, unpublished regression pages. Local credentials are loaded by `loadConfig()`; do not inspect the session directory or print credentials.
+
+```sh
+npm run ai:modify -- --run-id modify-example
+npm run ai:modify:resume -- --run-id modify-example
+npm run ai:modify:status -- --run-id modify-example
+npm run ai:modify:cleanup -- --run-id modify-example --apply
+
+npm run ai:result-actions -- --run-id result-actions-example
+npm run ai:result-actions:resume -- --run-id result-actions-example
+npm run ai:result-actions:status -- --run-id result-actions-example
+npm run ai:result-actions:cleanup -- --run-id result-actions-example --apply
+```
+
+The underlying CLI requires `--apply` for run, resume and cleanup. Run IDs are validated and cannot be reused. With no ID, status/resume/cleanup use the flow's active-run pointer. State lives under `.state/ai-lifecycle/runs/<runId>/ai-<flow>/`; JSON/Markdown reports and screenshots live under `reports/ai-<flow>/<runId>/`.
+
+`ai.modifyRegression.modes` defaults to `["quick", "advanced"]`; add `"deep"` to exercise deep modification. Costs come from `ai.generationModes`. The seed is always a quick static image/text block. Each modification must replace the heading inside the owned committed block and appear in preview.
+
+`ai.resultActionsRegression.mode` defaults to `"quick"`. Separate generations test prompt preservation, regeneration with history and credit checks, direct application, and both changed-content exit branches. The commit barrier excludes temporary AI canvases and requires a stable count increase of exactly one, the generated heading and a cleared overlay. Both applied blocks are checked in preview. Cleanup requires a matching creation receipt and page identity and deletes only that run's page; neither flow publishes.
