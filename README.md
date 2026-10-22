@@ -60,6 +60,8 @@ npx playwright install chromium
 | `AIBLOCK_HEADLESS` | 覆盖显示模式，接受 `true`/`false` 或 `1`/`0`；未设置时 CI 默认 headless，非 CI 沿用配置 |
 | `AIBLOCK_SLOWMO` | 覆盖 Playwright 操作延迟，单位毫秒，必须为非负数 |
 
+GitHub Actions（`.github/workflows/offline-tests.yml`）会在 push 到 main、提交 PR 或手动触发时，在 ubuntu + Node 20 上安装 Playwright Chromium 与 headless shell 并运行 `npm test`。CI 只跑离线单测，不登录、不访问真实站点、不消耗积分。
+
 ## 常用命令
 
 ```sh
