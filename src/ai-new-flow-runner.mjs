@@ -73,7 +73,16 @@ export class NewFlowAutomation {
     this.state.ended_at = new Date().toISOString();
     this.state.duration_ms = Date.parse(this.state.ended_at) - Date.parse(this.state.started_at);
     const step = this.state.steps.find(item => item.status === 'running');
-    if (step) { step.failure_reason = error.message; step.status = 'failed'; }
+    if (step) {
+      step.failure_reason = error.message; step.status = 'failed';
+      const unresolved = (step.charges ?? []).filter(charge => !charge.passed);
+      const frame = this.editor && this.base.aiFrame();
+      if (frame && unresolved.length === 1) {
+        const key = this.flow === 'modify' && step.key !== 'seed' ? step.key : this.mode.mode ?? 'quick';
+        await this.charge(frame, step, unresolved[0].operation, this.generationMode(key).expectedCost)
+          .catch(chargeError => { step.failure_credit_capture = chargeError.message; });
+      }
+    }
     this.finishAttempt('failed', error.message);
     if (this.editor) await this.shot('failure', step).catch(() => {});
     await this.persist();
@@ -213,6 +222,7 @@ export class NewFlowAutomation {
     await header.getByRole('button', { name: '应用', exact: true }).waitFor({ state: 'visible', timeout: 15000 });
     const apply = header.getByRole('button', { name: '应用', exact: true });
     await this.base.waitForAiControlReady(frame, apply, 'Full-screen Apply');
+    const stableMs = this.mode.fullscreenStableMs ?? 1000;
     let stableSince = 0, signature = '';
     await wait(async () => {
       let next = '';
@@ -222,9 +232,9 @@ export class NewFlowAutomation {
         if (await visible(heading)) { next = await heading.innerText(); break; }
       }
       if (!next || next !== signature) { signature = next; stableSince = Date.now(); return false; }
-      return Date.now() - stableSince >= 1000;
+      return Date.now() - stableSince >= stableMs;
     }, 15000, 'Full-screen generated heading did not stabilize');
-    step.fullscreen_evidence = { token: step.content_token ?? step.token, heading: signature, stable_ms: 1000, apply_ready: true };
+    step.fullscreen_evidence = { token: step.content_token ?? step.token, heading: signature, stable_ms: stableMs, apply_ready: true };
     await this.shot(`${step.key}-fullscreen`, step); return header;
   }
   async applyNew(frame, step, { confirmation = false } = {}) {

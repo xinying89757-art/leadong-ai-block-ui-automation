@@ -396,7 +396,9 @@
       "pagePathPrefix": "ai-history-regression-",
       "mode": "quick",
       "generationTimeoutMs": 180000,
-      "commitTimeoutMs": 60000
+      "commitTimeoutMs": 60000,
+      "continuationTimeoutMs": 600000,
+      "fullscreenStableMs": 5000
     },
     "validationRegression": {
       "enabled": true,

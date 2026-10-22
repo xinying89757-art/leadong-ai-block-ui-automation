@@ -34,3 +34,12 @@ test('history state has deterministic owned pages, guarded paths and independent
  state.steps[2].content_token=state.steps[0].token;assertFlowState(state,config,'history','unit-history');
  state.page.path='/existing';assert.throws(()=>assertFlowState(state,config,'history','unit-history'),/ownership/);
 });
+test('continuation outcome supports in-place resumption and a newly timestamped record without accepting an old duplicate',async()=>{
+ const {continuationOutcome}=await import('../src/ai-history-state.mjs');
+ const original=parseGenerationHistoryRecord(row({status:'生成失败',points:0,timestamp:'2026-10-21 18:00:00'}));
+ const completed=parseGenerationHistoryRecord(row({timestamp:'2026-10-22 18:00:00'}));
+ assert.equal(continuationOutcome([original],original,'2026-10-22T09:59:00Z').resumed,false);
+ assert.equal(continuationOutcome([original,completed],original,'2026-10-22T09:59:00Z').source,'new-continuation-record');
+ const resumed={...original,status:'running'};assert.equal(continuationOutcome([resumed],original,'2026-10-22T09:59:00Z').resumed,true);
+ assert.throws(()=>continuationOutcome([original,completed,{...completed,timestamp:'2026-10-22 18:00:01'}],original,'2026-10-22T09:59:00Z'),/ambiguous/);
+});

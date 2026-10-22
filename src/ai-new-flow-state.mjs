@@ -75,8 +75,8 @@ export function resumeStepAction(step) {
   return 'recover';
 }
 export function renderFlowReport(state) {
-  const rows = state.steps.map(step => `| ${step.key} | ${step.status} | ${(step.charges ?? []).map(c => `${c.before} → ${c.after ?? 'pending'} (${c.actual_cost ?? 'pending'})`).join('; ')} | ${String(step.failure_reason || step.preview_failure || '').replace(/\s+/g, ' ')} |`);
-  return `# AI ${state.flow}: ${state.run_id}\n\nStatus: ${state.status}\n\nDuration: ${state.duration_ms ?? 'running'} ms\n\n${state.failure_reason || ''}\n\nPage: ${state.page.name} (${state.page.path})\n\n| Step | Status | Points | Failure |\n| --- | --- | --- | --- |\n${rows.join('\n')}\n\n${state.conclusion ?? ''}\n\nEvidence:\n${[...state.evidence, ...state.steps.flatMap(step => step.evidence)].map(file => `- ${file}`).join('\n')}\n`;
+  const rows = state.steps.map(step => `| ${step.key} | ${step.status} | ${(step.charges ?? []).map(c => `${c.before} → ${c.after ?? 'pending'} (${c.actual_cost ?? 'pending'})`).join('; ')} | ${String(step.failure_reason || step.preview_failure || step.skip_reason || '').replace(/\s+/g, ' ')} |`);
+  return `# AI ${state.flow}: ${state.run_id}\n\nStatus: ${state.status}\n\nDuration: ${state.duration_ms ?? 'running'} ms\n\n${state.failure_reason || ''}\n\nPage: ${state.page.name} (${state.page.path})\n\n| Step | Status | Points | Failure |\n| --- | --- | --- | --- |\n${rows.join('\n')}\n\n${state.conclusion ?? ''}\n\nChecks:\n${state.steps.map(step => `- ${step.key}: ${JSON.stringify(Object.fromEntries(['history_before','history_after','row_count','order_verified','points_before','points_after','points_charged','resume_verified','skip_reason','reopen_verified','preview_status','validation_message','usage_record'].filter(key => step[key] !== undefined).map(key => [key, step[key]])))}`).join('\n')}\n\nEvidence:\n${[...state.evidence, ...state.steps.flatMap(step => step.evidence)].map(file => `- ${file}`).join('\n')}\n`;
 }
 export function parseHistoryBadge(text) {
   const match = String(text ?? '').match(/生成记录\s*(\d+)\s*$/);

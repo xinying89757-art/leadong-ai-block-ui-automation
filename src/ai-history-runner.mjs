@@ -2,7 +2,7 @@ import { NewFlowAutomation, wait, visible } from './ai-new-flow-runner.mjs';
 import { fillAndVerify } from './wait-utils.mjs';
 import { readHistoryCards } from './ai-history-reuse-runner.mjs';
 import { parseHistoryBadge, assertHistoryIncrement } from './ai-new-flow-state.mjs';
-import { parseGenerationHistoryRecord, assertHistoryRecords, selectRecoverableFailure } from './ai-history-state.mjs';
+import { parseGenerationHistoryRecord, assertHistoryRecords, selectRecoverableFailure, continuationOutcome } from './ai-history-state.mjs';
 
 export class AiHistoryAutomation extends NewFlowAutomation {
   constructor(editor, config, runId) { super(editor, config, runId, 'history'); }
@@ -111,13 +111,15 @@ export class AiHistoryAutomation extends NewFlowAutomation {
     step.reopen_verified=true;step.status='passed';await this.shot('inserted-owned-history-canvas',step);await this.persist();
   }
   async continueFailed(step, records) {
-    const candidate=step.record??selectRecoverableFailure(records.records);
+    const frame=await this.openHistory({refresh:true});
+    const currentRecords=await this.readAll(frame);
+    const candidate=step.record??selectRecoverableFailure(currentRecords);
     if (!candidate) {
       step.status='skipped';step.skip_reason='skipped: no failed record available';
       step.details='Inspected all loaded history rows. No genuine recoverable combo failure exists; no synthetic failure or response interception used.';
       await this.persist();return;
     }
-    const frame=await this.openHistory({refresh:true});const card=await this.matchingCard(frame,candidate);
+    const card=await this.matchingCard(frame,candidate);
     await this.assertOwnedIdentity();
     step.scope_evidence={page:this.state.page.name,page_id:this.state.page.creation_receipt.id,action:'generation continuation only; no existing page insertion or publish'};
     step.record=candidate;
@@ -132,16 +134,26 @@ export class AiHistoryAutomation extends NewFlowAutomation {
     let latest;
     await wait(async()=>{
       const ui=await this.openHistory({refresh:true});
-      const selected=await this.matchingCard(ui,candidate);
-      latest=parseGenerationHistoryRecord(await selected.innerText(),candidate.id);
-      return latest.status==='completed';
-    },this.mode.generationTimeoutMs,'Continuation did not produce a completed record');
+      const outcome=continuationOutcome(await this.readAll(ui),candidate,step.continuation_started_at);
+      if (!outcome) return false;
+      latest=outcome.record;
+      step.status_observations ??= [];
+      step.status_observations.push({at:new Date().toISOString(),status:latest.status,timestamp:latest.timestamp,points:latest.points,source:outcome.source});
+      if (outcome.resumed) step.resume_verified=true;
+      await this.persist();
+      return step.resume_verified && ['completed','failed'].includes(latest.status);
+    },this.mode.continuationTimeoutMs ?? this.mode.generationTimeoutMs,'Continuation did not resume and reach a terminal record');
     step.resumed_record=latest;step.resume_verified=true;
     const ui=await this.base.openAiDialog();step.points_after=await this.points.read(ui);
     step.points_charged=step.points_before-step.points_after;
     await this.creditShot(ui,'continue-generation-credits',step,step.points_after);
     await this.assertOwnedIdentity();await this.shot('continuation-status-change',step);
-    step.generation_status=latest.status;step.status='passed';await this.persist();
+    step.generation_status=latest.status;
+    if (latest.status==='failed') {
+      this.state.product_observations ??= [];
+      this.state.product_observations.push({kind:'continued-generation-failed-again',step:step.key,timestamp:latest.timestamp,points:latest.points,screenshot:step.evidence.at(-1)});
+    }
+    step.status='passed';await this.persist();
   }
   async run() {
     await this.ownPage();
@@ -151,11 +163,20 @@ export class AiHistoryAutomation extends NewFlowAutomation {
     for (const step of this.state.steps) {
       if (['passed','skipped'].includes(step.status)) continue;
       this.activeStep=step;step.status='running';step.failure_reason='';await this.persist();
-      if (step===generation) await this.generateOwned(step);
-      else if (step===records) await this.inspectRecords(step,generation);
-      else if (step===insertion) await this.insertOwned(step,generation,records);
-      else await this.continueFailed(step,records);
+      try {
+        if (step===generation) await this.generateOwned(step);
+        else if (step===records) await this.inspectRecords(step,generation);
+        else if (step===insertion) await this.insertOwned(step,generation,records);
+        else await this.continueFailed(step,records);
+      } catch (error) {
+        step.status='failed';step.failure_reason=error.message;
+        await this.shot(`${step.key}-failure`,step).catch(()=>{});await this.persist();
+        if (/ownership|identity|collision|receipt|ambiguous|authentication/i.test(error.message)) throw error;
+        await this.base.closeAiResult().catch(()=>{});
+      }
     }
+    const failed=this.state.steps.filter(step=>!['passed','skipped'].includes(step.status));
+    if (failed.length) throw new Error(failed.map(step=>`${step.key}: ${step.failure_reason}`).join('; '));
     await this.base.closeAiResult();return this.complete();
   }
 }

@@ -37,3 +37,14 @@ export function assertHistoryRecords(records, modes) {
 export function selectRecoverableFailure(records) {
   return records.find(record=>record.status==='failed' && record.recoverable) ?? null;
 }
+export function continuationOutcome(records, original, startedAt) {
+  const normalized=value=>String(value).replace(/\s+/g,' ').trim();
+  const matching=records.filter(record=>normalized(record.prompt)===normalized(original.prompt));
+  const newRecords=matching.filter(record=>record.timestamp!==original.timestamp && record.epoch_ms>=Date.parse(startedAt)-2000);
+  if (newRecords.length>1) throw new Error('Continuation result ambiguous');
+  if (newRecords.length===1) return { record:newRecords[0], resumed:true, source:'new-continuation-record' };
+  const same=matching.filter(record=>original.id?record.id===original.id:record.timestamp===original.timestamp);
+  if (same.length>1) throw new Error('Continuation source ambiguous');
+  if (!same.length) return null;
+  return {record:same[0],resumed:same[0].status!=='failed',source:'original-record'};
+}
