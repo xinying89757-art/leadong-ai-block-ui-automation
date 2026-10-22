@@ -41,8 +41,8 @@ function scopedForCombo(config, runId, stateFile, comboKey) {
 function checkState(state, config, runId, comboKey) {
   if (!state || state.run_id !== runId || state.site_name !== config.siteName || state.site_language !== config.siteLanguage ||
     state.types?.length !== 1 || state.types[0].type !== config.ai.compositeRegression.type ||
-    state.page?.name !== `${config.ai.compositeRegression.pageNamePrefix}${runId}` ||
-    state.page?.path !== `/${config.ai.compositeRegression.pagePathPrefix}${runId}` ||
+    state.page?.name !== `${config.ai.compositeRegression.pageNamePrefix}001-${runId}` ||
+    state.page?.path !== `/${config.ai.compositeRegression.pagePathPrefix}001-${runId}` ||
     !compositeSelectionValid(state.types[0].composite_selection, combos[comboKey])) throw new Error("Combo state identity/selection mismatch");
 }
 async function main() {
