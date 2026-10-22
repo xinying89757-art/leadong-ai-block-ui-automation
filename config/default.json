@@ -71,6 +71,14 @@
         "heading": "AI Static Text Deep Mode Regression"
       }
     ],
+    "categorySystemPages": {
+      "产品分类": "Product Category",
+      "文章分类": "News",
+      "视频分类": "Video List",
+      "图册分类": "Gallery",
+      "下载分类": "Download",
+      "FAQ 分类": "FAQ"
+    },
     "generationTimeoutMs": 180000,
     "generationStatusRefreshIntervalMs": 30000,
     "pageSwitchStableMs": 3000,

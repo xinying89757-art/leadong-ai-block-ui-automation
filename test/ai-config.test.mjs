@@ -68,6 +68,7 @@ test("重复 AI 类型或 types 数量变化会被拒绝", () => {
     excludedTypes: [],
     inputMode: "文字描述",
     generationMode: "快速模式",
+    categorySystemPages: { "产品分类": "Product Category", "文章分类": "News", "视频分类": "Video List", "图册分类": "Gallery", "下载分类": "Download", "FAQ 分类": "FAQ" },
     prompts: { "静态图文": "English" },
     applyIntervalMs: 1,
     publishInitialWaitMs: 1,
