@@ -228,6 +228,16 @@ export class AiHistoryAutomation extends NewFlowAutomation {
         else await this.continueFailed(step,records);
       } catch (error) {
         step.status='failed';step.failure_reason=error.message;
+        if (step===continuation && step.continuation_started_at) {
+          if (step.generation_status==='running') step.generation_status='uncertain';
+          // Preserve final credit evidence before closing the in-flight UI.
+          try {
+            await this.assertOwnedIdentity();
+            const ui=this.base.aiFrame();
+            step.points_after=await this.points.read(ui);step.points_charged=step.points_before-step.points_after;
+            await this.creditShot(ui,'continuation-timeout-credits',step,step.points_after);
+          } catch(captureError) {step.failure_credit_capture=captureError.message;}
+        }
         await this.shot(`${step.key}-failure`,step).catch(()=>{});await this.persist();
         if (step===generation || step===records || /ownership|identity|collision|receipt|ambiguous|authentication/i.test(error.message)) throw error;
         await this.base.closeAiResult().catch(()=>{});

@@ -59,6 +59,20 @@ export function assertCreditDelta(before, after, expected) {
   if (![before, after, expected].every(Number.isFinite) || before < 0 || after < 0 || expected <= 0 || before - after !== expected) throw new Error(`Credit delta mismatch: ${before} → ${after}; expected ${expected}`);
   return { before, after, expected_cost: expected, actual_cost: before - after, passed: true };
 }
+export function deriveFlowOutcome(state) {
+  const steps = state?.steps ?? [];
+  const previewStatuses = steps.map(step => step.preview_status).filter(Boolean);
+  const previewStatus = previewStatuses.includes('failed') ? 'failed'
+    : previewStatuses.includes('blocked-environment') ? 'blocked-environment'
+      : previewStatuses.includes('passed') ? 'passed' : 'not-applicable';
+  const failedAssertions = steps.some(step => step.status === 'failed' &&
+    !(step.assertions_passed === true && ['passed','failed','blocked-environment'].includes(step.preview_status)));
+  const assertionsStatus = failedAssertions || !steps.length || steps.some(step => !['passed','skipped'].includes(step.status) && step.preview_status !== 'blocked-environment')
+    ? 'FAIL' : 'PASS';
+  const overall = assertionsStatus === 'FAIL' || previewStatus === 'failed' ? 'FAIL'
+    : assertionsStatus === 'PASS' && previewStatus === 'blocked-environment' ? 'PASS (preview env-blocked)' : 'PASS';
+  return { assertions_status: assertionsStatus, preview_status: previewStatus, overall };
+}
 export function assertPromptPreserved(expected, actual) {
   if (actual !== expected) throw new Error('返回修改 did not preserve the original prompt');
   return true;
@@ -79,8 +93,10 @@ export function resumeStepAction(step) {
   return 'recover';
 }
 export function renderFlowReport(state) {
+  const outcome = deriveFlowOutcome(state);
+  Object.assign(state, outcome);
   const rows = state.steps.map(step => `| ${step.key} | ${step.status} | ${(step.charges ?? []).map(c => `${c.before} → ${c.after ?? 'pending'} (${c.actual_cost ?? 'pending'})`).join('; ')} | ${String(step.failure_reason || step.preview_failure || step.skip_reason || '').replace(/\s+/g, ' ')} |`);
-  return `# AI ${state.flow}: ${state.run_id}\n\nStatus: ${state.status}\n\nDuration: ${state.duration_ms ?? 'running'} ms\n\n${state.failure_reason || ''}\n\nPage: ${state.page.name} (${state.page.path})\n\n| Step | Status | Points | Failure |\n| --- | --- | --- | --- |\n${rows.join('\n')}\n\n${state.conclusion ?? ''}\n\nChecks:\n${state.steps.map(step => `- ${step.key}: ${JSON.stringify(Object.fromEntries(['history_before','history_after','row_count','order_verified','points_before','points_after','points_charged','resume_verified','skip_reason','reopen_verified','preview_status','validation_message','usage_record'].filter(key => step[key] !== undefined).map(key => [key, step[key]])))}`).join('\n')}\n\nEvidence:\n${[...state.evidence, ...state.steps.flatMap(step => step.evidence)].map(file => `- ${file}`).join('\n')}\n`;
+  return `# AI ${state.flow}: ${state.run_id}\n\nStatus: ${state.status}\n\nAssertions: ${outcome.assertions_status}\n\nPreview: ${outcome.preview_status}\n\nOverall: ${outcome.overall}\n\nDuration: ${state.duration_ms ?? 'running'} ms\n\n${state.failure_reason || ''}\n\nPage: ${state.page.name} (${state.page.path})\n\n| Step | Status | Points | Failure |\n| --- | --- | --- | --- |\n${rows.join('\n')}\n\n${state.conclusion ?? ''}\n\nChecks:\n${state.steps.map(step => `- ${step.key}: ${JSON.stringify(Object.fromEntries(['history_before','history_after','row_count','order_verified','points_before','points_after','points_charged','resume_verified','skip_reason','reopen_verified','preview_status','validation_message','usage_record'].filter(key => step[key] !== undefined).map(key => [key, step[key]])))}`).join('\n')}\n\nEvidence:\n${[...state.evidence, ...state.steps.flatMap(step => step.evidence)].map(file => `- ${file}`).join('\n')}\n`;
 }
 export function parseHistoryBadge(text) {
   const match = String(text ?? '').match(/生成记录\s*(\d+)\s*$/);

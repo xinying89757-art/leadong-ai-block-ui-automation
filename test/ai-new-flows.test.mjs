@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { loadConfig } from '../src/config.mjs';
-import { assertFlowState, createFlowState, validateRunId, flowPaths, flowConfig, assertCreditDelta, assertHistoryIncrement, parseHistoryBadge, assertModification, assertPromptPreserved, resumeStepAction, renderFlowReport } from '../src/ai-new-flow-state.mjs';
+import { assertFlowState, createFlowState, validateRunId, flowPaths, flowConfig, assertCreditDelta, assertHistoryIncrement, parseHistoryBadge, assertModification, assertPromptPreserved, resumeStepAction, renderFlowReport, deriveFlowOutcome } from '../src/ai-new-flow-state.mjs';
 const config = await loadConfig('config/run.json');
 test('new flows isolate pages by flow and run and reject altered ownership', () => {
   for (const flow of ['modify', 'result-actions']) {
@@ -60,6 +60,19 @@ test('resumption skips passed steps, verifies uncertain applications and recover
 test('reports show outcome, point evidence and screenshot paths', () => {
   const state=createFlowState(config,'modify','report'); state.steps[0].charges=[{before:100,after:94,actual_cost:6}];state.steps[0].evidence=['seed.png'];
   const report=renderFlowReport(state);assert.match(report,/100 → 94 \(6\)/);assert.match(report,/seed.png/);assert.match(report,/AI修改回归-report/);
+});
+
+test('two-part outcome derives assertion and preview status independently', () => {
+  const state=createFlowState(config,'modify','outcome');
+  state.steps.forEach(step=>step.status='passed');
+  assert.deepEqual(deriveFlowOutcome(state),{assertions_status:'PASS',preview_status:'not-applicable',overall:'PASS'});
+  state.steps[0].preview_status='blocked-environment';state.steps[0].status='failed';state.steps[0].assertions_passed=true;
+  assert.deepEqual(deriveFlowOutcome(state),{assertions_status:'PASS',preview_status:'blocked-environment',overall:'PASS (preview env-blocked)'});
+  state.steps[0].preview_status='failed';
+  assert.deepEqual(deriveFlowOutcome(state),{assertions_status:'PASS',preview_status:'failed',overall:'FAIL'});
+  state.steps[0].assertion_failure=true;
+  state.steps[0].assertions_passed=false;
+  assert.deepEqual(deriveFlowOutcome(state),{assertions_status:'FAIL',preview_status:'failed',overall:'FAIL'});
 });
 
 test('preview uses only the owned editor host and preview route', async () => {

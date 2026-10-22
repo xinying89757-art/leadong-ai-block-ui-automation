@@ -5,7 +5,7 @@ import { AiDialogPointsReader, parseAvailablePoints } from './ai-points.mjs';
 import { fillAndVerify, pollUntil } from './wait-utils.mjs';
 import { committedAiSnapshot, isTemporaryAiFrame, waitForAiCommit } from './ai-canvas-commit.mjs';
 import { comparePageIdentity } from './page-identity.mjs';
-import { assertFlowState, assertCreditDelta, flowConfig, flowPaths, readFlowJson, writeFlowJson, renderFlowReport, previewTarget, selectOwnedHistoryRecord } from './ai-new-flow-state.mjs';
+import { assertFlowState, assertCreditDelta, deriveFlowOutcome, flowConfig, flowPaths, readFlowJson, writeFlowJson, renderFlowReport, previewTarget, selectOwnedHistoryRecord } from './ai-new-flow-state.mjs';
 import { upgradeHttpUrl, previewFailureStatus } from './network-https-upgrade.mjs';
 export const visible = locator => locator.isVisible().catch(() => false);
 export const wait = (check, timeoutMs, message) => pollUntil(check, { timeoutMs, intervalMs: 250, message });
@@ -53,6 +53,7 @@ export class NewFlowAutomation {
     await this.persist();
   }
   async persist() {
+    Object.assign(this.state, deriveFlowOutcome(this.state));
     await writeFlowJson(this.paths.state, this.state);
     await mkdir(this.paths.report, { recursive: true });
     await writeFlowJson(path.join(this.paths.report, 'report.json'), this.state);
@@ -304,6 +305,7 @@ export class NewFlowAutomation {
     await this.editor.openCustomPage((this.currentPage ?? this.state.page).name);
     await this.waitToken(step.committed_block_id, token);
     step.reopen_verified = true; await this.shot(`${step.key}-saved-reopened`, step);
+    step.assertions_passed = true;
     const link = this.editor.page.locator('.clickToPreview a').first();
     const href = await link.getAttribute('href');
     let target = upgradeHttpUrl(previewTarget(href, this.editor.page.url()), this.config.network?.httpsUpgradeHosts);

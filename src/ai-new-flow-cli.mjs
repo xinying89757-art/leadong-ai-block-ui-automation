@@ -2,7 +2,7 @@ import { loadConfig } from './config.mjs';
 import { LeadongEditor, launchEditorBrowser } from './editor.mjs';
 import { ensureAuthenticated, dismissBlockingModals, automaticLogin } from './auth.mjs';
 import { parseCliArgs } from './cli-args.mjs';
-import { assertFlowState, createExclusiveFlowState, createFlowState, flowPaths, readFlowJson, validateRunId, writeFlowJson } from './ai-new-flow-state.mjs';
+import { assertFlowState, createExclusiveFlowState, createFlowState, deriveFlowOutcome, flowPaths, readFlowJson, validateRunId, writeFlowJson } from './ai-new-flow-state.mjs';
 export async function runNewFlowCli(flow, Runner, argv = process.argv.slice(2)) {
   const args = parseCliArgs(argv), command = args._[0] ?? 'status';
   if (!['run', 'resume', 'status', 'cleanup'].includes(command)) throw new Error('Unknown command');
@@ -24,7 +24,7 @@ export async function runNewFlowCli(flow, Runner, argv = process.argv.slice(2)) 
   const state = await readFlowJson(paths.state);
   if (!state) throw new Error(`No state for ${runId}`);
   assertFlowState(state, config, flow, runId);
-  if (command === 'status') { console.log(JSON.stringify(state, null, 2)); return; }
+  if (command === 'status') { console.log(JSON.stringify({ ...state, ...deriveFlowOutcome(state) }, null, 2)); return; }
   const runner = new Runner(null, config, runId);
   await runner.initialize({ command });
   let context;

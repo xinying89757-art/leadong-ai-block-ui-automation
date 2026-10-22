@@ -41,3 +41,25 @@ test('configuration host array and environment override resolve independently of
   assert.deepEqual(httpsUpgradeHosts({network:{httpsUpgradeHosts:['A.example','a.example']}},{}),['a.example']);
   assert.deepEqual(httpsUpgradeHosts({network:{httpsUpgradeHosts:['a.example']}},{LEADONG_HTTPS_UPGRADE_HOSTS:'b.example,c.example'}),['b.example','c.example']);
 });
+test('context HTTPS proxy handles compressed responses, POST bodies and first popup requests',{timeout:20000},async t=>{
+  const {createServer}=await import('node:http');const {gzipSync}=await import('node:zlib');const {chromium}=await import('playwright');const {installHttpsUpgrade}=await import('../src/network-https-upgrade.mjs');
+  let browser,context;const hits=[],upgrades=[];
+  const server=createServer(async(req,res)=>{
+    const chunks=[];for await(const chunk of req)chunks.push(chunk);
+    hits.push({path:req.url,method:req.method,body:Buffer.concat(chunks).toString(),fixture:req.headers['x-fixture']});
+    res.statusCode=req.method==='POST'?201:200;res.setHeader('Content-Type','text/html');res.setHeader('Content-Encoding','gzip');res.setHeader('Connection','close');
+    res.end(gzipSync(req.method==='POST'?'POST forwarded':'<body>proxy-fixture <a href="http://proxy-fixture.test/popup" target="_blank">Open</a></body>'));
+  });
+  try{
+    try{await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});}catch(error){if(error.code==='EPERM'){t.skip('Local listeners unavailable');return;}throw error;}
+    try{browser=await chromium.launch({headless:true});}catch{t.skip('Chromium unavailable');return;}
+    context=await browser.newContext();const originalFetch=context.request.fetch.bind(context.request);
+    context.request.fetch=async(url,options)=>{upgrades.push(String(url));const local=new URL(String(url));local.protocol='http:';local.host=`127.0.0.1:${server.address().port}`;return originalFetch(local.href,options);};
+    await installHttpsUpgrade(context,['proxy-fixture.test']);const page=await context.newPage();await page.goto('http://proxy-fixture.test/start');
+    assert.match(await page.locator('body').innerText(),/proxy-fixture/);
+    const post=await page.evaluate(async()=>{const response=await fetch('/post',{method:'POST',headers:{'x-fixture':'preserved'},body:'fixture-body'});return {status:response.status,text:await response.text()};});
+    assert.deepEqual(post,{status:201,text:'POST forwarded'});assert.ok(hits.some(hit=>hit.method==='POST'&&hit.body==='fixture-body'&&hit.fixture==='preserved'));
+    const popupPromise=context.waitForEvent('page');await page.getByText('Open',{exact:true}).click();const popup=await popupPromise;await popup.waitForLoadState('domcontentloaded');assert.match(await popup.locator('body').innerText(),/proxy-fixture/);
+    assert.ok(upgrades.length>=3);assert.ok(upgrades.every(url=>url.startsWith('https://proxy-fixture.test/')));
+  }finally{await context?.close();await browser?.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
+});
