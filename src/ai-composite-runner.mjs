@@ -82,9 +82,10 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
     if (record.combo_history_after !== record.combo_history_before + 1) throw new Error(`组合区块历史记录数异常：${record.combo_history_before} → ${record.combo_history_after}`);
     const cards = current.locator(this.config.selectors.aiHistoryCardSelector);
     const matches = [];
+    const normalizedPrompt = String(prompt).replace(/\s+/g, " ").trim();
     for (let i = 0; i < await cards.count(); i++) {
       const card = cards.nth(i), text = await card.innerText().catch(() => "");
-      if (!text.includes(String(prompt).slice(0, 40))) continue;
+      if (text.replace(/\s+/g, " ").trim().indexOf(normalizedPrompt) < 0) continue;
       try { matches.push(parseGenerationHistoryRecord(text, await card.getAttribute("data-id").catch(() => ""))); } catch {}
     }
     if (matches.length !== 1) throw new Error(`本轮组合区块生成记录匹配数 ${matches.length}，预期唯一`);

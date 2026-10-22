@@ -26,10 +26,13 @@ async function persistReport(state, paths) {
   const { writeFile } = await import("node:fs/promises");
   await writeFile(path.join(dir, "report.md"), render(state));
 }
-function scopedForCombo(config, runId, stateFile, comboKey) {
+function scopedForCombo(config, runId, stateFile, comboKey, modeKey) {
   const dynamicTypes = combos[comboKey];
   if (!dynamicTypes) throw new Error("combo must be product_pair, article_pair, or three_type");
   const scoped = compositeScopedConfig(config, runId, stateFile);
+  const mode = scoped.ai.generationModes.find(item => item.key === modeKey);
+  if (!mode) throw new Error(`Unsupported generation mode: ${modeKey}`);
+  scoped.ai.compositeRegression.generationMode = mode.label;
   scoped.ai.compositeRegression.dynamicTypes = [...dynamicTypes];
   scoped.ai.compositeRegression.maxGenerationAttempts = 3;
   const body = dynamicTypes.includes("文章列表")
@@ -57,6 +60,9 @@ async function main() {
   if (!/^[A-Za-z0-9_-]{1,80}$/.test(runId)) throw new Error("Invalid run-id");
   const paths = compositePaths(config, runId);
   const current = await readCompositeJson(paths.state);
+  const savedMode = current?.types?.[0]?.generation_attempts?.[0]?.generation_mode;
+  const configuredMode = args.mode ?? (savedMode ? config.ai.generationModes.find(item => item.label === savedMode)?.key : undefined);
+  const modeKey = configuredMode || config.ai.generationModes.find(item => item.label === config.ai.compositeRegression.generationMode)?.key;
   if (command === "status") {
     if (!current) throw new Error("No combo state");
     checkState(current, config, runId, comboKey);
@@ -69,7 +75,7 @@ async function main() {
     if (!current) throw new Error("No combo state"); checkState(current, config, runId, comboKey);
     const receipt = current.page.creation_receipt;
     if (!receipt?.id || receipt.name !== current.page.name || receipt.path !== current.page.path) throw new Error("Missing owned page receipt; refusing cleanup");
-    const scoped = scopedForCombo(config, runId, paths.state, comboKey);
+    const scoped = scopedForCombo(config, runId, paths.state, comboKey, modeKey);
     const { context, page } = await launchEditorBrowser(scoped, { headless: true, isolatedProfile: false });
     try {
       const editor = new LeadongEditor(page, scoped); await editor.goto();
@@ -84,7 +90,7 @@ async function main() {
   }
   if (command === "run" && current) throw new Error("Run ID exists; use resume");
   if (command === "resume" && !current) throw new Error("No combo state to resume");
-  const scoped = scopedForCombo(config, runId, paths.state, comboKey);
+  const scoped = scopedForCombo(config, runId, paths.state, comboKey, modeKey);
   if (current) checkState(current, config, runId, comboKey);
   const { context, page } = await launchEditorBrowser(scoped, { headless: true, isolatedProfile: false });
   const started = Date.now(); let automation;
