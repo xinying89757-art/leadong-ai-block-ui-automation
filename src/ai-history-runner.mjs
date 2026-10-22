@@ -88,6 +88,21 @@ export class AiHistoryAutomation extends NewFlowAutomation {
     step.owned_record=own[0];step.row_count=step.records.length;step.order_verified=true;
     await this.shot('history-records-badges-and-order',step);step.status='passed';await this.persist();
   }
+  async verifyCommittedContent(step, id) {
+    // A new wrapper and cleared overlay confirm the owned-page insertion.
+    // Persist through the ordinary toolbar, then assert actual rendered content
+    // after a full reload, rather than relying on the in-memory editor alone.
+    await this.assertOwnedIdentity();
+    step.save_policy='Save the confirmed new owned wrapper, reload, then assert its heading';
+    try { step.save_evidence=await this.editor.savePage(); }
+    catch (error) { step.save_evidence={warning:error.message}; }
+    await this.shot('history-insert-after-toolbar-save',step);
+    await this.editor.page.reload({waitUntil:'domcontentloaded',timeout:60000});
+    await this.editor.openCustomPage(this.state.page.name);await this.assertOwnedIdentity();
+    await this.waitToken(id,step.content_token ?? step.token);
+    step.saved=true;step.reopen_verified=true;
+    return true;
+  }
   async insertOwned(step, generated, records) {
     if (step.application_status==='applying') await this.finishCommit(step);
     else if (step.application_status!=='applied') {
@@ -134,7 +149,7 @@ export class AiHistoryAutomation extends NewFlowAutomation {
       step.continuation_started_at=new Date().toISOString();step.generation_status='running';await this.persist();
       await this.shot('failed-row-before-continue',step);
       await card.getByRole('button',{name:'继续生成',exact:true}).click();
-      step.clicked=true;await this.shot('immediately-after-continue',step);await this.persist();
+      step.clicked=true;step.continue_loading_observed=await card.getByRole('button',{name:'继续生成',exact:true}).isDisabled().catch(()=>false);await this.shot('immediately-after-continue',step);await this.persist();
     }
     // Keep the client orchestration alive. Closing/reloading a composite job
     // while it runs can abandon its recoverable composition progress.
@@ -145,6 +160,15 @@ export class AiHistoryAutomation extends NewFlowAutomation {
         if (await visible(result) && await result.isEnabled()) {
           resultAppeared=true;step.result_appeared=true;step.resume_verified=true;
           await this.shot('continued-result-appeared',step);return true;
+        }
+        const sourceCard=frame.locator(this.config.selectors.aiHistoryCardSelector).filter({hasText:candidate.timestamp}).filter({hasText:candidate.prompt});
+        const continueButton=sourceCard.getByRole('button',{name:'继续生成',exact:true});
+        if (await visible(continueButton)) {
+          if (await continueButton.isDisabled()) step.continue_loading_observed=true;
+          else if (step.continue_loading_observed && step.resume_verified) {
+            step.terminal_error='Continuation resumed, then returned to the same recoverable 生成失败 record';
+            await this.shot('continuation-returned-failed',step);return true;
+          }
         }
         const text=await frame.locator('body').innerText();
         if (/AI正在生成|正在生成区块|生成中/.test(text)) {

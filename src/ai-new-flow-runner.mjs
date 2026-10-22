@@ -77,6 +77,10 @@ export class NewFlowAutomation {
       step.failure_reason = error.message; step.status = 'failed';
       const unresolved = (step.charges ?? []).filter(charge => !charge.passed);
       const frame = this.editor && this.base.aiFrame();
+      if (frame && step.points_before !== undefined && step.points_after === undefined) {
+        try { step.points_after = await this.points.read(frame); step.points_charged = step.points_before - step.points_after; }
+        catch (captureError) { step.failure_credit_capture = captureError.message; }
+      }
       if (frame && unresolved.length === 1) {
         const key = this.flow === 'modify' && step.key !== 'seed' ? step.key : this.mode.mode ?? 'quick';
         await this.charge(frame, step, unresolved[0].operation, this.generationMode(key).expectedCost)
@@ -280,9 +284,12 @@ export class NewFlowAutomation {
       step.commit_observations = observations; await this.persist();
     }
     step.commit_observations = observations; step.committed_block_id = committed.addedId;
-    await this.waitToken(committed.addedId, step.edited_token ?? step.content_token ?? step.token);
+    await this.verifyCommittedContent(step, committed.addedId);
     step.application_status = 'applied'; step.editor_verified = true;
     await this.shot(`${step.key}-committed`, step); await this.persist();
+  }
+  async verifyCommittedContent(step, id) {
+    return this.waitToken(id, step.edited_token ?? step.content_token ?? step.token);
   }
   async saveAndPreview(step, token = step.edited_token ?? step.content_token ?? step.token) {
     await this.assertOwnedIdentity();

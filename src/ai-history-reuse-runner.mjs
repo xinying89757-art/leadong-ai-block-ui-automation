@@ -50,12 +50,10 @@ function sourceKey(value) {
 /** Shared UI extraction; keep locators so the selected owned card can be acted on. */
 export async function readHistoryCards(frame, config) {
   const cards = frame.locator(config.selectors.aiHistoryCardSelector);
-  const result = [];
-  for (let index = 0, count = await cards.count(); index < count; index++) {
-    const card = cards.nth(index);
-    result.push({ card, text: await card.innerText(), id: await card.getAttribute('data-id') || await card.getAttribute('data-record-id') || '', index });
-  }
-  return result;
+  const data = await cards.evaluateAll(nodes => nodes.map((node,index) => ({
+    text: node.innerText, id: node.getAttribute('data-id') || node.getAttribute('data-record-id') || '', index,
+  })));
+  return data.map(record => ({ ...record, card: cards.nth(record.index) }));
 }
 
 export function renderedBlockEvidence(data, editorEvidence) {
