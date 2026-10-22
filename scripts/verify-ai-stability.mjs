@@ -3,13 +3,14 @@ import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { chromium } from "playwright";
+import { browserLaunchOptions } from "../src/browser-options.mjs";
 import { loadConfig } from "../src/config.mjs";
 import { AiFullPageAutomation } from "../src/ai-full-page-runner.mjs";
 import { pageContentSnapshot } from "../src/ai-content-ready.mjs";
 
 const config = await loadConfig("config/run.json");
 config.ai.fullPageRegression = { ...config.ai.fullPageRegression, applicationTimeoutMs: 5000, applicationStableMs: 200, applicationPollIntervalMs: 25 };
-const browser = await chromium.launch({ channel: "chrome", headless: false });
+const browser = await chromium.launch(browserLaunchOptions({ browser: { channel: "chrome", headless: false } }));
 try {
   const page = await browser.newPage();
   page.on("pageerror", (error) => console.error(`Fixture page error: ${error.message}`));

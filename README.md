@@ -19,7 +19,7 @@
 
 ## 安装与配置
 
-需要 Node.js 20+、安装了 Google Chrome 的 macOS，以及目标测试站点的授权访问权限。
+需要 Node.js 20+ 和目标测试站点的授权访问权限。macOS 默认使用已安装的 Google Chrome 并显示浏览器窗口；Linux/CI 可使用 Playwright 自带的 Chromium。
 
 ```sh
 npm ci
@@ -49,6 +49,22 @@ set +a
 图片输入流程默认使用仓库内的 `fixtures/images/ai-block-test-image.png`。如需指定其他本地图片，可设置 `AIBLOCK_TEST_IMAGE` 为绝对路径或仓库相对路径。配置中的相对路径始终以仓库根目录为基准，与当前工作目录无关。只有流程确实需要登录时才要求提供账号密码。
 
 HTML 上传样例位于 `fixtures/html-upload/pulse-dashboard.html`。
+
+## Linux / CI 运行
+
+安装依赖后，Linux 可安装 Playwright 自带的 Chromium：
+
+```sh
+npx playwright install chromium
+```
+
+设置 `CI` 环境变量时，浏览器默认以 headless 模式启动。可用以下变量覆盖浏览器配置；`AIBLOCK_BROWSER_CHANNEL` 留空或设为 `chromium` 时使用 Playwright 自带的 Chromium，设为 `chrome` 或 `msedge` 时使用已安装的对应浏览器 channel。
+
+| 变量 | 用途 |
+| --- | --- |
+| `AIBLOCK_BROWSER_CHANNEL` | 浏览器 channel：`chrome`、`msedge`、`chromium` 或空值；未设置时沿用配置（默认 `chrome`） |
+| `AIBLOCK_HEADLESS` | 覆盖显示模式，接受 `true`/`false` 或 `1`/`0`；未设置时 CI 默认 headless，非 CI 沿用配置 |
+| `AIBLOCK_SLOWMO` | 覆盖 Playwright 操作延迟，单位毫秒，必须为非负数 |
 
 ## 常用命令
 

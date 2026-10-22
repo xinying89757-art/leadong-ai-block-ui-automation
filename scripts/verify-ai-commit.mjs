@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright';
+import { browserLaunchOptions } from '../src/browser-options.mjs';
 import { projectRoot, loadConfig } from '../src/config.mjs';
 import { AiProductFilterAutomation } from '../src/ai-product-filter-runner.mjs';
 import { committedAiSnapshot, waitForAiCommit } from '../src/ai-canvas-commit.mjs';
 import { AiBlockAutomation } from '../src/ai-runner.mjs';
 import { pageContentSnapshot } from '../src/ai-content-ready.mjs';
-const browser = await chromium.launch({ channel: 'chrome', headless: false });
+const browser = await chromium.launch(browserLaunchOptions({ browser: { channel: 'chrome', headless: false } }));
 try {
   const page = await browser.newPage();
   await page.setContent(`<div id="backstage-bodyArea">

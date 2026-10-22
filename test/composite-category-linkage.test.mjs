@@ -8,6 +8,7 @@ import { createCompositeProductsState,compositeProductsConfig,compositeProductsP
   compositeProductsPassed,ownedCompositeMatches,sameSiteCategoryUrl,validateCategoryMembership } from '../src/ai-composite-products-state.mjs';
 import { categoryProducts,matchProductCategoryFilter,CompositeCategoryLinkage } from '../src/composite-category-linkage.mjs';
 import { chromium } from 'playwright';
+import { browserLaunchOptions } from '../src/browser-options.mjs';
 import { AiCompositeProductsAutomation } from '../src/ai-composite-products-runner.mjs';
 import { writeCompositeJson } from '../src/ai-composite-state.mjs';
 
@@ -106,7 +107,7 @@ test('有页面展示标记但分类交互未验证时，专项不得通过',asy
 
 test('本地浏览器验证真实点击分类跳转，并拒绝拿原生列表替代本轮复合区块',async()=>{
   const temp=await mkdtemp(path.join(os.tmpdir(),'composite-click-'));
-  const browser=await chromium.launch({channel:'chrome',headless:true});
+  const browser=await chromium.launch(browserLaunchOptions({browser:{channel:process.env.AIBLOCK_TEST_BROWSER_CHANNEL||'chromium',headless:true}}));
   try{
     const cards=ids=>`<div data-block-uuid="ai-productlist"><ul>${ids.map(id=>`<li class="prodlist-site-block" data-pid="${id}"><a class="titleLabel" href="/p-pd123.html">产品${id}</a></li>`).join('')}</ul></div>`;
     const block=ids=>`<div id="round-block"><div data-block-uuid="ai-groupProduct"><a href="/test-pl123.html">测试分类</a></div>${cards(ids)}</div>`;

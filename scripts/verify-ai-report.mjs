@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
+import { browserLaunchOptions } from "../src/browser-options.mjs";
 import { buildRegressionHtml, writeRegressionReport } from "../src/ai-regression-report.mjs";
 import { readableCheck } from "../src/ai-regression-report-view.mjs";
 
@@ -16,7 +17,7 @@ const latest = path.resolve("reports/ai-regression/latest.html");
 const out = path.resolve("output/playwright");
 const temp = await mkdtemp(path.join(os.tmpdir(), "ai-report-ui-"));
 await mkdir(out, { recursive: true });
-const browser = await chromium.launch({ channel: "chrome", headless: false });
+const browser = await chromium.launch(browserLaunchOptions({ browser: { channel: "chrome", headless: false } }));
 const errors = [];
 const remoteRequests = [];
 const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });

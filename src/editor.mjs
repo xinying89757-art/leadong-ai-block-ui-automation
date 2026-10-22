@@ -4,6 +4,7 @@ import { assertPageCapacityAvailable } from './ai-platform-errors.mjs';
 import { chromium } from "playwright";
 import { pageCreationRequest, pageCreationResult, pagePath, comparePageIdentity } from './page-identity.mjs';
 import { authConfig, automaticLogin, ensureAuthenticated, isLoginPage } from "./auth.mjs";
+import { browserLaunchOptions } from "./browser-options.mjs";
 
 function regex(source) {
   return new RegExp(source, "i");
@@ -133,10 +134,8 @@ export async function launchEditorBrowser(config, options = {}) {
     : config.paths.userDataDir;
   await mkdir(profileDir, { recursive: true });
   const browserOptions = {
-    channel: config.browser.channel,
-    headless: options.headless ?? config.browser.headless,
+    ...browserLaunchOptions(config, options),
     locale: config.browser.locale,
-    slowMo: options.slowMo ?? config.browser.slowMo,
     viewport: null,
     args: ["--start-maximized"],
   };
