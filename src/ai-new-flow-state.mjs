@@ -44,6 +44,7 @@ export function assertFlowState(state, config, flow, runId) {
   const expected = createFlowState(config, flow, runId);
   if (state?.version !== 1 || state.flow !== flow || state.run_id !== runId || state.site_name !== config.siteName || state.site_language !== config.siteLanguage) throw new Error('State identity mismatch');
   if (state.page?.name !== expected.page.name || state.page?.path !== expected.page.path) throw new Error('Page ownership mismatch');
+  if (flow === 'history' && state.steps?.some(step => step.content_token !== undefined && step.content_token !== expected.steps[0].token)) throw new Error('History heading ownership mismatch');
   if (state.steps?.length !== expected.steps.length || state.steps.some((step, i) => step.key !== expected.steps[i].key || step.token !== expected.steps[i].token)) throw new Error('Step configuration mismatch');
   for (let i = 0; i < state.steps.length; i++) {
     const page = state.steps[i].page, expectedPage = expected.steps[i].page;

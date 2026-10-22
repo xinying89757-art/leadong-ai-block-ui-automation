@@ -102,11 +102,16 @@ export class AiHistoryAutomation extends NewFlowAutomation {
       await this.shot('owned-history-insert',step);
       await this.fullscreen(frame,step);await this.applyNew(frame,step);
     }
+    if (!step.saved) {
+      await this.waitToken(step.committed_block_id,generated.token);
+      step.save_evidence=await this.editor.savePage();step.saved=true;await this.persist();
+    }
     const frame=await this.base.openAiDialog();
     step.points_after=await this.points.read(frame);
     if (step.points_before!==step.points_after) throw new Error('History insertion charged extra credits');
     await this.creditShot(frame,'history-insertion-no-charge',step,step.points_after);
     await this.base.closeAiResult();
+    await this.editor.page.reload({waitUntil:'domcontentloaded',timeout:60000});
     await this.editor.openCustomPage(this.state.page.name);await this.waitToken(step.committed_block_id,generated.token);
     step.reopen_verified=true;step.status='passed';await this.shot('inserted-owned-history-canvas',step);await this.persist();
   }
@@ -124,34 +129,63 @@ export class AiHistoryAutomation extends NewFlowAutomation {
     step.scope_evidence={page:this.state.page.name,page_id:this.state.page.creation_receipt.id,action:'generation continuation only; no existing page insertion or publish'};
     step.record=candidate;
     if (!step.continuation_started_at) {
-      step.points_before=await this.points.read(frame);step.baseline=await this.snapshot();
+      step.points_before=await this.points.read(frame);step.history_before=await this.count(frame);step.baseline=await this.snapshot();
+      await card.scrollIntoViewIfNeeded();
       step.continuation_started_at=new Date().toISOString();step.generation_status='running';await this.persist();
       await this.shot('failed-row-before-continue',step);
       await card.getByRole('button',{name:'继续生成',exact:true}).click();
-      step.clicked=true;await this.persist();
+      step.clicked=true;await this.shot('immediately-after-continue',step);await this.persist();
     }
-    // Read-only refreshes recover an interrupted continuation; never click twice.
-    let latest;
-    await wait(async()=>{
-      const ui=await this.openHistory({refresh:true});
-      const outcome=continuationOutcome(await this.readAll(ui),candidate,step.continuation_started_at);
-      if (!outcome) return false;
-      latest=outcome.record;
-      step.status_observations ??= [];
-      step.status_observations.push({at:new Date().toISOString(),status:latest.status,timestamp:latest.timestamp,points:latest.points,source:outcome.source});
-      if (outcome.resumed) step.resume_verified=true;
-      await this.persist();
-      return step.resume_verified && ['completed','failed'].includes(latest.status);
-    },this.mode.continuationTimeoutMs ?? this.mode.generationTimeoutMs,'Continuation did not resume and reach a terminal record');
-    step.resumed_record=latest;step.resume_verified=true;
-    const ui=await this.base.openAiDialog();step.points_after=await this.points.read(ui);
-    step.points_charged=step.points_before-step.points_after;
-    await this.creditShot(ui,'continue-generation-credits',step,step.points_after);
-    await this.assertOwnedIdentity();await this.shot('continuation-status-change',step);
-    step.generation_status=latest.status;
-    if (latest.status==='failed') {
+    // Keep the client orchestration alive. Closing/reloading a composite job
+    // while it runs can abandon its recoverable composition progress.
+    let resultAppeared=false;
+    if (!step.result_appeared) {
+      await wait(async()=>{
+        const result=frame.getByRole('button',{name:/^应用(?:模块|区块)$/});
+        if (await visible(result) && await result.isEnabled()) {
+          resultAppeared=true;step.result_appeared=true;step.resume_verified=true;
+          await this.shot('continued-result-appeared',step);return true;
+        }
+        const text=await frame.locator('body').innerText();
+        if (/AI正在生成|正在生成区块|生成中/.test(text)) {
+          if (!step.resume_verified) await this.shot('continuation-in-progress',step);
+          step.resume_verified=true;step.progress_observed=true;await this.persist();
+        }
+        const errors=await frame.locator('.el-message--error:visible,.el-notification--error:visible,[role="alert"]:visible').allInnerTexts();
+        if (step.resume_verified && errors.some(message=>/失败|错误/.test(message))) {
+          step.terminal_error=errors.join(' ').slice(0,500);return true;
+        }
+        const historyActive=String(await frame.locator(this.config.selectors.aiHistoryTriggerSelector).getAttribute('class')).includes('active');
+        const rows=historyActive ? await readHistoryCards(frame,this.config) : [];
+        if (rows.length) {
+          let parsed;
+          try { parsed=rows.map(({text,id})=>parseGenerationHistoryRecord(text,id)); }
+          catch (error) { step.transient_history_parse_error=error.message;return false; }
+          const outcome=continuationOutcome(parsed,candidate,step.continuation_started_at);
+          if (outcome?.resumed) {
+            step.resume_verified=true;
+            if (['completed','failed'].includes(outcome.record.status)) return true;
+          }
+        }
+        return false;
+      },this.mode.continuationTimeoutMs ?? this.mode.generationTimeoutMs,'Continuation produced neither a status change nor a usable result');
+    }
+    const trigger=frame.locator(this.config.selectors.aiHistoryTriggerSelector);
+    if (!String(await trigger.getAttribute('class')).includes('active')) await trigger.click();
+    const current=await this.readAll(frame);
+    const outcome=continuationOutcome(current,candidate,step.continuation_started_at);
+    step.resumed_record=outcome?.record??null;step.continuation_source=outcome?.source??'result-view';
+    step.history_after=await this.count(frame);
+    if (step.history_before!==undefined && outcome?.source==='new-continuation-record') assertHistoryIncrement(step.history_before,step.history_after);
+    step.points_after=await this.points.read(frame);step.points_charged=step.points_before-step.points_after;
+    await this.creditShot(frame,'continue-generation-credits',step,step.points_after);
+    await this.assertOwnedIdentity();step.after_snapshot=await this.snapshot();
+    await this.shot('continuation-result-and-history',step);
+    step.generation_status=step.result_appeared?'result-visible':outcome?.record.status??'resumed';
+    if (!step.resume_verified) throw new Error('Continuation did not resume');
+    if (step.terminal_error) {
       this.state.product_observations ??= [];
-      this.state.product_observations.push({kind:'continued-generation-failed-again',step:step.key,timestamp:latest.timestamp,points:latest.points,screenshot:step.evidence.at(-1)});
+      this.state.product_observations.push({kind:'continued-generation-failed-again',step:step.key,error:step.terminal_error,screenshot:step.evidence.at(-1)});
     }
     step.status='passed';await this.persist();
   }
@@ -171,7 +205,7 @@ export class AiHistoryAutomation extends NewFlowAutomation {
       } catch (error) {
         step.status='failed';step.failure_reason=error.message;
         await this.shot(`${step.key}-failure`,step).catch(()=>{});await this.persist();
-        if (/ownership|identity|collision|receipt|ambiguous|authentication/i.test(error.message)) throw error;
+        if (step===generation || step===records || /ownership|identity|collision|receipt|ambiguous|authentication/i.test(error.message)) throw error;
         await this.base.closeAiResult().catch(()=>{});
       }
     }

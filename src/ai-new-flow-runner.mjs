@@ -72,7 +72,7 @@ export class NewFlowAutomation {
     this.state.status = 'failed'; this.state.failure_reason = error.message;
     this.state.ended_at = new Date().toISOString();
     this.state.duration_ms = Date.parse(this.state.ended_at) - Date.parse(this.state.started_at);
-    const step = this.state.steps.find(item => item.status === 'running');
+    const step = this.state.steps.find(item => item.status === 'running') ?? this.activeStep;
     if (step) {
       step.failure_reason = error.message; step.status = 'failed';
       const unresolved = (step.charges ?? []).filter(charge => !charge.passed);

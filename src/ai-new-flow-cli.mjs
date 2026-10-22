@@ -1,6 +1,6 @@
 import { loadConfig } from './config.mjs';
 import { LeadongEditor, launchEditorBrowser } from './editor.mjs';
-import { ensureAuthenticated, dismissBlockingModals } from './auth.mjs';
+import { ensureAuthenticated, dismissBlockingModals, automaticLogin } from './auth.mjs';
 import { parseCliArgs } from './cli-args.mjs';
 import { assertFlowState, createExclusiveFlowState, createFlowState, flowPaths, readFlowJson, validateRunId, writeFlowJson } from './ai-new-flow-state.mjs';
 export async function runNewFlowCli(flow, Runner, argv = process.argv.slice(2)) {
@@ -36,6 +36,13 @@ export async function runNewFlowCli(flow, Runner, argv = process.argv.slice(2)) 
     await launched.page.goto(config.auth.adminUrl, { waitUntil: 'domcontentloaded' });
     await ensureAuthenticated(launched.page, context, config);
     await dismissBlockingModals(launched.page);
+    const siteCards = launched.page.locator(config.selectors.siteCardSelector);
+    await siteCards.first().waitFor({state:'attached',timeout:10000}).catch(()=>{});
+    if (!await siteCards.count()) {
+      // An unauthenticated overview shell can render before its login redirect.
+      await automaticLogin(launched.page,context,config);
+      await dismissBlockingModals(launched.page);
+    }
     const editor = new LeadongEditor(launched.page, config);
     await editor.enterTargetSite();
     runner.attach(editor);

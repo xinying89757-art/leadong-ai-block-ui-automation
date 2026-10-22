@@ -18,7 +18,7 @@ export function parseGenerationHistoryRecord(text, id = '') {
   const pointsLine = metadata.find(line=>/^\d+\s*点$/.test(line));
   const points = pointsLine ? Number(pointsLine.match(/\d+/)[0]) : null;
   const block_type = metadata[metadata.indexOf(modeLabel) + 1];
-  if (!input_method || !mode || !block_type || block_type===pointsLine || points===null) throw new Error('History metadata badge missing');
+  if (!input_method || !mode || !block_type || block_type===pointsLine || (points===null && /^(已完成|生成失败)$/.test(lines[statusIndex]))) throw new Error('History metadata badge missing');
   const status_label = lines[statusIndex];
   return { id, prompt: lines.slice(0,statusIndex).join('\n'), status: status_label==='已完成'?'completed':status_label==='生成失败'?'failed':'running', status_label,
     input_method, mode, mode_label: modeLabel, block_type, points, ...parseRecordTimestamp(text),
