@@ -6,7 +6,10 @@ import { LeadongEditor } from '../src/editor.mjs';
 
 test('页面设置只读当前可见弹窗，监听真实提交，回读请求和业务回执', async () => {
   let businessFail = false, requests = 0;
-  const server = createServer(async (req, res) => {
+  let server;
+  let browser;
+  try {
+  server = createServer(async (req, res) => {
     if (req.url === '/phoenix/page/setting') {
       requests += 1;
       res.setHeader('Content-Type', 'application/json');
@@ -21,8 +24,7 @@ test('页面设置只读当前可见弹窗，监听真实提交，回读请求�
       <a class="page_function_setting_submit" onclick="fetch('/phoenix/page/setting',{method:'POST',body:new URLSearchParams({'page.pageTitle':document.querySelector('#pageTitle').value,'page.pageUrl':document.querySelector('#pageUrl').value})})">确定</a></div>`);
   });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  const browser = await chromium.launch({ headless: true });
-  try {
+  browser = await chromium.launch({ headless: true, timeout: 30000 });
     const page = await browser.newPage();
     await page.goto(`http://127.0.0.1:${server.address().port}`);
     const editor = new LeadongEditor(page, { selectors: { pageCreateResponseUrlIncludes: '/phoenix/page/setting' }, timeouts: { actionMs: 2000 } });
@@ -39,5 +41,11 @@ test('页面设置只读当前可见弹窗，监听真实提交，回读请求�
     await modal.locator('#pageTitle').fill('Wrong page');
     await assert.rejects(editor.submitPageSettings(modal, descriptor), /回读不一致/);
     assert.equal(requests, 2);
-  } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
+  } finally {
+    await browser?.close().catch(() => {});
+    if (server?.listening) {
+      server.closeAllConnections?.();
+      await new Promise(resolve => server.close(resolve));
+    }
+  }
 });
