@@ -12,6 +12,8 @@ export function flowConfig(config, flow) {
   if (!Object.hasOwn(flows, flow)) throw new Error('Unknown flow');
   const value = config.ai[flows[flow].config];
   if (!value?.enabled) throw new Error(`${flow} is disabled`);
+  if (flow === 'validation' && value.mode !== 'quick') throw new Error('Validation credit check requires quick mode');
+  for (const key of ['continuationTimeoutMs','fullscreenStableMs']) if (value[key] !== undefined && (!Number.isInteger(value[key]) || value[key] <= 0)) throw new Error(`Invalid ${key}`);
   for (const key of ['generationTimeoutMs', 'commitTimeoutMs']) if (!Number.isInteger(value[key]) || value[key] <= 0) throw new Error(`Invalid ${key}`);
   const keys = flow === 'modify' ? value.modes : [value.mode];
   if (!Array.isArray(keys) || !keys.length || new Set(keys).size !== keys.length || keys.some(key => !config.ai.generationModes.some(mode => mode.key === key))) throw new Error('Invalid generation modes');

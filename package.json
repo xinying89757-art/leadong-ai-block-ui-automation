@@ -87,7 +87,11 @@
     "ai:history": "node src/ai-history-cli.mjs run --apply",
     "ai:history:resume": "node src/ai-history-cli.mjs resume --apply",
     "ai:history:status": "node src/ai-history-cli.mjs status",
-    "ai:history:cleanup": "node src/ai-history-cli.mjs cleanup"
+    "ai:history:cleanup": "node src/ai-history-cli.mjs cleanup",
+    "ai:validation": "node src/ai-validation-cli.mjs run --apply",
+    "ai:validation:resume": "node src/ai-validation-cli.mjs resume --apply",
+    "ai:validation:status": "node src/ai-validation-cli.mjs status",
+    "ai:validation:cleanup": "node src/ai-validation-cli.mjs cleanup"
   },
   "engines": {
     "node": ">=20"

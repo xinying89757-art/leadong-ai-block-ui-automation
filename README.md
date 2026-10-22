@@ -147,3 +147,16 @@ npm run ai:history:cleanup -- --run-id history-example --apply
 ```
 
 配置为 `ai.historyRegression`。run/resume/cleanup 必须 `--apply`（前两者的 npm 脚本已包含）。状态和创建回执记录在 lifecycle 目录，JSON/Markdown 与截图在 `reports/ai-history/<runId>/`。恢复只读取/使用已提交的记录，不重复提交已扣点生成；应用状态不确定时先检查画布。cleanup 只删除该 run 的精确归属页面。
+
+## 输入校验与积分（Flow 5）
+
+`ai:validation` 在独立 `AI输入校验回归-<runId>` 页面检查空提示词、GIF/BMP、超过 5 MiB 的 PNG、有效 PNG 和三个无效网址。拒绝场景必须有错误信息或禁用生成/拒绝文件的证据，同时积分和历史总数不变。有效 PNG 只验证接受，不生成。最后只用文字描述生成一次快速模式区块，核对设置面板实际扣 6 点，并在「查看使用记录」中按时间、使用类型和点数匹配唯一记录。不会发布。
+
+```sh
+LEADONG_HTTPS_UPGRADE_HOSTS=website.leadong.com npm run ai:validation -- --run-id validation-example
+npm run ai:validation:resume -- --run-id validation-example
+npm run ai:validation:status -- --run-id validation-example
+npm run ai:validation:cleanup -- --run-id validation-example --apply
+```
+
+配置为 `ai.validationRegression`；积分场景固定快速模式。小型真实 GIF/BMP 在 `fixtures/validation/`；有效 PNG 在 `fixtures/images/test-image.png`；大 PNG 运行时生成到 gitignored `tmp/validation/<runId>/`。状态、创建回执、断点和报告遵循其它新流程模式，报告在 `reports/ai-validation/<runId>/`。如果无效输入意外触发生成，记录真实失败及扣点/历史证据；恢复不会重做这笔意外生成。run/resume/cleanup 有 `--apply` 保护。

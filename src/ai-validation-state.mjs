@@ -6,7 +6,8 @@ export function assertNoChargeEvidence(before,after) {
   return {passed:true,points_charged:0,history_delta:0};
 }
 export function parseUsageRecord(row, headers=[]) {
-  const cells=(Array.isArray(row)?row:String(row).split(/[\t\n]+/)).map(value=>String(value).replace(/\s+/g,' ').trim()).filter(Boolean);
+  const values=(Array.isArray(row)?row:String(row).split(/[\t\n]+/)).map(value=>String(value).replace(/\s+/g,' ').trim());
+  const cells=Array.isArray(row)?values:values.filter(Boolean);
   const text=cells.join(' | ');
   const time=parseRecordTimestamp(text.replace(/(\d{4}-\d{2}-\d{2})T/,'$1 '));
   const pointsIndex=headers.findIndex(header=>/消耗|扣除|使用点数|使用积分|消费.*点|点数变动|积分变动|变动.*点|消费点数/.test(header));

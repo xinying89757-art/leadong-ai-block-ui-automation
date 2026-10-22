@@ -192,7 +192,7 @@ export class AiHistoryAutomation extends NewFlowAutomation {
           }
         }
         return false;
-      },this.mode.continuationTimeoutMs ?? this.mode.generationTimeoutMs,'Continuation produced neither a status change nor a usable result');
+      },this.mode.continuationTimeoutMs ?? this.mode.generationTimeoutMs,'Continuation did not reach a usable result or terminal record within the bounded wait');
     }
     const trigger=frame.locator(this.config.selectors.aiHistoryTriggerSelector);
     if (!String(await trigger.getAttribute('class')).includes('active')) await trigger.click();
