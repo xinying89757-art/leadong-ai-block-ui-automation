@@ -315,7 +315,7 @@
     "aiDetailStateDir": ".state/ai-detail",
     "aiLifecycleDir": ".state/ai-lifecycle",
     "aiRegressionReportsDir": "reports/ai-regression",
-    "artifactsDir": "artifacts/ranking-heading"
+    "artifactsDir": "artifacts/ai-block"
   },
   "selectors": {
     "siteCardSelector": ".mySiteBox",

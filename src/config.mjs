@@ -5,6 +5,20 @@ import { fileURLToPath } from "node:url";
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
 export const projectRoot = path.resolve(sourceDir, "..");
 
+const legacyEnvironmentNames = {
+  AIBLOCK_ADMIN_ACCOUNT: "BUG1004949_ADMIN_ACCOUNT",
+  AIBLOCK_ADMIN_PASSWORD: "BUG1004949_ADMIN_PASSWORD",
+  AIBLOCK_ADMIN_CONFIG: "BUG1004949_ADMIN_CONFIG",
+};
+
+export function aiblockEnv(name, fallback) {
+  const value = process.env[name];
+  if (value !== undefined && value !== "") return value;
+  const legacyName = legacyEnvironmentNames[name];
+  const legacyValue = legacyName ? process.env[legacyName] : undefined;
+  return legacyValue !== undefined && legacyValue !== "" ? legacyValue : fallback;
+}
+
 function isPlainObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }

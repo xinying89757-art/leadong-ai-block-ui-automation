@@ -1,5 +1,6 @@
 import { chmod, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { aiblockEnv } from "./config.mjs";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -15,7 +16,7 @@ function optionalProxy(value) {
 function authSettings(config) {
   const configured = config.auth ?? {};
   return {
-    configPath: env("BUG1004949_ADMIN_CONFIG", configured.configPath),
+    configPath: aiblockEnv("AIBLOCK_ADMIN_CONFIG", configured.configPath),
     storageStatePath: env("UI_STORAGE_STATE", configured.storageStatePath),
     adminUrl: env("UI_ADMIN_URL", configured.adminUrl),
     loginUrl: env("UI_ADMIN_LOGIN_URL", configured.loginUrl),
@@ -31,16 +32,16 @@ export async function readAdminCredentials(config) {
     try {
       fileConfig = JSON.parse(await readFile(settings.configPath, "utf8"));
     } catch (error) {
-      if (!process.env.BUG1004949_ADMIN_ACCOUNT || !process.env.BUG1004949_ADMIN_PASSWORD) {
+      if (!aiblockEnv("AIBLOCK_ADMIN_ACCOUNT") || !aiblockEnv("AIBLOCK_ADMIN_PASSWORD")) {
         throw new Error(`无法读取管理员账号配置 ${settings.configPath}：${error.message}`);
       }
     }
   }
-  const account = env("BUG1004949_ADMIN_ACCOUNT", fileConfig.account);
-  const password = env("BUG1004949_ADMIN_PASSWORD", fileConfig.password);
+  const account = aiblockEnv("AIBLOCK_ADMIN_ACCOUNT", fileConfig.account);
+  const password = aiblockEnv("AIBLOCK_ADMIN_PASSWORD", fileConfig.password);
   if (!account || !password) {
     throw new Error(
-      "缺少管理员账号配置，请设置 BUG1004949_ADMIN_ACCOUNT/BUG1004949_ADMIN_PASSWORD，或提供外部 admin-login.json",
+      "缺少管理员账号配置，请设置 AIBLOCK_ADMIN_ACCOUNT/AIBLOCK_ADMIN_PASSWORD，或提供外部 admin-login.json",
     );
   }
   return { account, password };
