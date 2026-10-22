@@ -91,7 +91,11 @@
     "ai:validation": "node src/ai-validation-cli.mjs run --apply",
     "ai:validation:resume": "node src/ai-validation-cli.mjs resume --apply",
     "ai:validation:status": "node src/ai-validation-cli.mjs status",
-    "ai:validation:cleanup": "node src/ai-validation-cli.mjs cleanup"
+    "ai:validation:cleanup": "node src/ai-validation-cli.mjs cleanup",
+    "ai:combo": "node src/ai-combo-cli.mjs run --apply",
+    "ai:combo:resume": "node src/ai-combo-cli.mjs resume --apply",
+    "ai:combo:status": "node src/ai-combo-cli.mjs status",
+    "ai:combo:cleanup": "node src/ai-combo-cli.mjs cleanup --apply"
   },
   "engines": {
     "node": ">=20"

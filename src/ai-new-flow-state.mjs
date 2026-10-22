@@ -67,7 +67,7 @@ export function deriveFlowOutcome(state) {
       : previewStatuses.includes('passed') ? 'passed' : 'not-applicable';
   const failedAssertions = steps.some(step => step.status === 'failed' &&
     !(step.assertions_passed === true && ['passed','failed','blocked-environment'].includes(step.preview_status)));
-  const assertionsStatus = failedAssertions || !steps.length || steps.some(step => !['passed','skipped'].includes(step.status) && step.preview_status !== 'blocked-environment')
+  const assertionsStatus = failedAssertions || !steps.length || steps.some(step => !['passed','skipped'].includes(step.status) && step.assertions_passed !== true)
     ? 'FAIL' : 'PASS';
   const overall = assertionsStatus === 'FAIL' || previewStatus === 'failed' ? 'FAIL'
     : assertionsStatus === 'PASS' && previewStatus === 'blocked-environment' ? 'PASS (preview env-blocked)' : 'PASS';

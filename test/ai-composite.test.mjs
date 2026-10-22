@@ -5,12 +5,26 @@ import { createInitialAiState } from "../src/ai-state.mjs";
 import { canRetryCompositeGeneration, compositeSelectionValid, prepareCompositeGenerationRetry } from "../src/ai-composite-runner.mjs";
 import {
   assertCompositeState,
+  assertComboPairCostConsistency,
   compositePassed,
   compositePaths,
   compositeResumeAction,
   compositeScopedConfig,
   newCompositeRunId,
 } from "../src/ai-composite-state.mjs";
+
+test("combo pair requires equal balance delta and generation-history points badge", () => {
+  const make = run_id => ({ run_id, combo_assertions_status: "PASS", types: [{
+    composite_selection: { selected_dynamic_types: ["产品列表", "产品分类"] },
+    combo_points_before: 100, combo_points_after: 70, combo_points_charged: 30,
+    combo_history_record: { points: 30 },
+  }] });
+  assert.deepEqual(assertComboPairCostConsistency(make("one"), make("two")), {
+    passed: true, selected_dynamic_types: ["产品列表", "产品分类"], cost: 30,
+  });
+  const mismatch = make("two"); mismatch.types[0].combo_history_record.points = 15;
+  assert.throws(() => assertComboPairCostConsistency(make("one"), mismatch), /badge/);
+});
 
 test("复合区块专项默认使用静态图文、产品列表和产品分类", async () => {
   const config = await loadConfig("config/run.json");

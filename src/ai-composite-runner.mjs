@@ -1,4 +1,6 @@
 import { AiPagedAutomation } from "./ai-paged-runner.mjs";
+import { AiDialogPointsReader } from "./ai-points.mjs";
+import { parseGenerationHistoryRecord } from "./ai-history-state.mjs";
 
 function exactButton(scope, selector, text) {
   const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -58,6 +60,39 @@ export function prepareCompositeGenerationRetry(record, error, now = new Date())
 }
 
 export class AiCompositeRegressionAutomation extends AiPagedAutomation {
+  constructor(...args) { super(...args); this.comboPoints = new AiDialogPointsReader(this.config); }
+
+  async submitBlockGeneration(frame, generate, prompt, record) {
+    record.combo_points_before = await this.comboPoints.read(frame);
+    record.combo_history_before = Number((await frame.locator(this.config.selectors.aiHistoryTriggerSelector).innerText()).match(/\d+\s*$/)?.[0]?.trim());
+    if (!Number.isInteger(record.combo_history_before)) throw new Error("无法读取生成前历史记录数");
+    return super.submitBlockGeneration(frame, generate, prompt, record);
+  }
+
+  async waitForGeneration(frame, prompt, historyCountBefore, timeoutMs, record) {
+    const result = await super.waitForGeneration(frame, prompt, historyCountBefore, timeoutMs, record);
+    const current = result?.frame ?? frame;
+    const mode = this.config.ai.generationModes.find(item => item.label === this.config.ai.compositeRegression.generationMode);
+    if (!mode) throw new Error("组合区块生成模式未配置点数规则");
+    record.combo_points_after = await this.comboPoints.waitForCharge(current, record.combo_points_before, mode.expectedCost,
+      { timeoutMs: this.config.timeouts.blockRenderMs, intervalMs: 1000 });
+    record.combo_points_charged = record.combo_points_before - record.combo_points_after;
+    if (record.combo_points_charged !== mode.expectedCost) throw new Error(`组合区块扣点不符：${record.combo_points_charged}，模式应扣 ${mode.expectedCost}`);
+    record.combo_history_after = Number((await current.locator(this.config.selectors.aiHistoryTriggerSelector).innerText()).match(/\d+\s*$/)?.[0]?.trim());
+    if (record.combo_history_after !== record.combo_history_before + 1) throw new Error(`组合区块历史记录数异常：${record.combo_history_before} → ${record.combo_history_after}`);
+    const cards = current.locator(this.config.selectors.aiHistoryCardSelector);
+    const matches = [];
+    for (let i = 0; i < await cards.count(); i++) {
+      const card = cards.nth(i), text = await card.innerText().catch(() => "");
+      if (!text.includes(String(prompt).slice(0, 40))) continue;
+      try { matches.push(parseGenerationHistoryRecord(text, await card.getAttribute("data-id").catch(() => ""))); } catch {}
+    }
+    if (matches.length !== 1) throw new Error(`本轮组合区块生成记录匹配数 ${matches.length}，预期唯一`);
+    record.combo_history_record = matches[0];
+    if (matches[0].points !== record.combo_points_charged) throw new Error(`历史 points badge ${matches[0].points} 与余额扣点 ${record.combo_points_charged} 不符`);
+    return result;
+  }
+
   canResumeSubmittedGeneration(record) {
     return record?.type === this.config.ai.compositeRegression.type &&
       record.generation_status === "uncertain" && record.generation_submit_confirmed === true &&
@@ -259,5 +294,45 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
     this.state.page.type_failures = (this.state.page.type_failures || []).filter(item => item.type !== record.type);
     this.state.page.failure_reason = "";
     await this.persist();
+  }
+
+  async runUnpublished({ resume = false } = {}) {
+    const state = await this.run({ maxTypes: 1, resume, publish: false });
+    const record = state.types[0];
+    if (!state.page.saved || record.apply_status !== "applied" || !record.committed_block_id) throw new Error("组合区块未确认保存及应用，禁止后续验证");
+    await this.editor.page.reload({ waitUntil: "domcontentloaded" });
+    await this.editor.waitForCanvasReady();
+    await this.editor.openCustomPage(state.page.name);
+    if (!await this.verifyEditorType(record.type)) throw new Error("保存并重新打开后未找到本轮复合区块");
+    record.combo_reopen_verified = true;
+    const dynamicTypes = this.config.ai.compositeRegression.dynamicTypes;
+    const evidence = { checked_types: [], matches: {} };
+    for (const type of dynamicTypes) {
+      const needle = type === "产品列表" ? /product|goods/i
+        : type === "产品分类" ? /product.?categor|categor(y|ies)|classif/i
+          : type === "文章列表" ? /article|news/i
+            : type === "文章分类" ? /article.?categor|news.?categor|categor(y|ies)|classif/i : /video|gallery|download|faq/i;
+      let found = 0;
+      for (const frame of this.editor.canvasContexts()) {
+        const block = frame.locator(`#${record.committed_block_id}`);
+        found += await block.locator("*").evaluateAll((nodes, source) => {
+          const pattern = new RegExp(source, "i");
+          return nodes.filter(node => pattern.test(`${node.className || ""} ${node.getAttribute("data-type") || ""} ${node.getAttribute("data-component") || ""} ${node.getAttribute("data-module") || ""}`) &&
+            node.getClientRects().length > 0 && getComputedStyle(node).visibility !== "hidden" && getComputedStyle(node).display !== "none").length;
+        }, needle.source).catch(() => 0);
+      }
+      evidence.checked_types.push(type);
+      evidence.matches[type] = { visible_dom_matches: found, selector_hint: needle.source };
+      if (!found) throw new Error(`复合区块画布中未发现可见的 ${type} 类型特征 DOM`);
+    }
+    record.combo_subblock_dom = evidence;
+    state.page.persisted_verified = true;
+    state.combo_assertions_status = "PASS";
+    state.combo_preview_status = state.page.preview_verified ? "passed" : "blocked-environment";
+    state.combo_overall = state.combo_preview_status === "blocked-environment" ? "PASS (preview env-blocked)" : "PASS";
+    state.page.publish_status = "not-applicable; no publishing performed";
+    state.status = "passed";
+    await this.persist();
+    return state;
   }
 }
