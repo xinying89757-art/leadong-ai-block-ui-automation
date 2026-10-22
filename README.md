@@ -26,16 +26,16 @@ npm ci
 cp .env.example .env.local
 ```
 
-在本地将 `.env.example` 中需要的值导出到 shell 环境；CLI 不会自动读取 `.env.local`。
+将 `.env.example` 复制为 `.env.local` 并填写本地配置。CLI 会自动读取仓库根目录下的 `.env.local`；已设置的 shell 环境变量优先。该文件可选且不会提交。
 
-管理员登录配置如下。`LEADONG_ADMIN_CONFIG` 指向的 JSON 文件应位于仓库外，并包含 `account` 和 `password`。新变量优先于旧变量；旧的 `BUG1004949_*` 变量仍作为已弃用的后备兼容。`.env.local`、外部凭据文件、Playwright 登录状态和运行状态均为本地文件，不要将凭据写入源码、报告或提交记录。
+管理员登录配置如下。`LEADONG_ADMIN_CONFIG` 指向的 JSON 文件应位于仓库外，并包含 `account` 和 `password`。变量优先级为 `LEADONG_*`、`AIBLOCK_*`、`BUG1004949_*`（最后一组仅兼容管理员配置）。`.env.local`、外部凭据文件、Playwright 登录状态和运行状态均为本地文件，不要将凭据写入源码、报告或提交记录。
 
 | 变量 | 用途 |
 | --- | --- |
 | `LEADONG_ADMIN_ACCOUNT` | 管理员账号 |
 | `LEADONG_ADMIN_PASSWORD` | 管理员密码 |
 | `LEADONG_ADMIN_CONFIG` | 可选的外部 JSON 凭据文件路径 |
-| `LEADONG_TEST_IMAGE` | 可选的本地图片路径 |
+| `LEADONG_TEST_IMAGE` | 可选的本地图片路径；默认 `fixtures/images/test-image.png` |
 | `UI_STORAGE_STATE` | 可选的 Playwright 登录状态文件 |
 | `UI_PROXY` | 可选代理；默认直连 |
 | `MIDSCENE_MODEL_API_KEY` | 仅视觉回退流程需要 |
@@ -57,10 +57,19 @@ npx playwright install chromium
 | 变量 | 用途 |
 | --- | --- |
 | `LEADONG_BROWSER_CHANNEL` | 浏览器 channel：`chrome`、`msedge`、`chromium` 或空值；未设置时沿用配置（非 CI 默认 `chrome`） |
+| `LEADONG_TEST_BROWSER_CHANNEL` | 仅覆盖分类联动的本地浏览器测试 channel；未设置时使用 `chromium` |
 | `LEADONG_HEADLESS` | 覆盖显示模式，接受 `true`/`false` 或 `1`/`0`；未设置时 CI 默认 headless，非 CI 沿用配置 |
-| `LEADONG_SLOW_MO` | 覆盖 Playwright 操作延迟，单位毫秒，必须为非负整数 |
+| `LEADONG_SLOW_MO` | 覆盖 Playwright 操作延迟，单位毫秒，必须为非负整数；旧 `AIBLOCK_SLOWMO` 也可作为后备 |
 
-GitHub Actions（`.github/workflows/ci.yml`）会在 push 和 pull request 时，在 Ubuntu + Node 22 上安装 Playwright Chromium 并运行 `npm test`。CI 只跑离线单测，不登录、不访问真实站点、不消耗积分。
+## 启用 CI
+
+CI 工作流模板位于 `ci/github-actions/offline-tests.yml`。启用时将其复制到 GitHub Actions 识别的目录：
+
+```sh
+mkdir -p .github/workflows && git mv ci/github-actions/offline-tests.yml .github/workflows/ci.yml
+```
+
+该工作流只运行离线测试，不登录、不访问真实站点、不消耗积分。
 
 ## 常用命令
 
@@ -94,8 +103,8 @@ npm run page:html-upload
 生成的报告、截图、浏览器配置、认证状态和运行状态仅保存在本地，并已从 Git 排除。脚本会按需将其写入 `reports/`、`output/`、`.auth/` 和 `.state/`。如需恢复运行，请保留这些目录；新克隆的仓库不包含这些数据。
 
 
-## CI / 本地测试
+## 本地测试
 
-GitHub Actions 在 Ubuntu 和 Node.js 22 上安装 Playwright Chromium 并运行 `npm test`，不会运行登录或真实站点自动化脚本。所有配置中的本地文件、状态和输出路径以仓库根目录解析，绝对路径保持原样。
+所有配置中的本地文件、状态和输出路径以仓库根目录解析，绝对路径保持原样。
 
 AI 生成模式与预期点数由 `ai.generationModes` 统一配置：快速模式 6 点、进阶模式 15 点（接受旧称“高级模式”）、深度模式 30 点。

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { sleep, pollUntil, PollTimeoutError, retry, withTimeout } from "../src/wait-utils.mjs";
+import { sleep, pollUntil, PollTimeoutError, retry, withTimeout, fillAndVerify } from "../src/wait-utils.mjs";
 import { waitFor } from "../src/ai-full-page-runner.mjs";
 
 function clock(t) {
@@ -124,4 +124,15 @@ test("withTimeout 成功、失败和到期均清理保护定时器，保留结�
   await rejected;
   assert.deepEqual(guards.map(item => item.ms), [100, 200, 300]);
   assert.deepEqual(cleared, guards);
+});
+
+test("fillAndVerify 校验 trim 后的值，并最多重新填入两次", async () => {
+  let value = "", fills = 0;
+  const locator = { fill: async text => { fills += 1; value = fills < 2 ? "stale" : text; }, inputValue: async () => value };
+  assert.equal(await fillAndVerify(locator, "  intended prompt  "), "  intended prompt  ");
+  assert.equal(fills, 2);
+  fills = 0;
+  locator.fill = async () => { fills += 1; value = "wrong"; };
+  await assert.rejects(fillAndVerify(locator, "intended prompt"), /提示词填入校验失败.*重试 2 次/);
+  assert.equal(fills, 3);
 });

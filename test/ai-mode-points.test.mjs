@@ -111,8 +111,9 @@ test("从 AI 弹窗设置面板读取余额后关闭面板", async () => {
     isVisible: async () => open,
     waitFor: async ({ state }) => assert.equal(open, state === "visible"),
     locator: (selector) => {
-      assert.equal(selector, ".moli-credit-detail");
-      return { waitFor: async () => {}, innerText: async () => "可用 2,706 点/总计 3,000 点" };
+      if (selector === ".moli-credit-detail") return { waitFor: async () => {}, innerText: async () => "可用 2,706 点/总计 3,000 点" };
+      assert.match(selector, /loading|spinner|busy/);
+      return { count: async () => 0 };
     },
   };
   const gear = {

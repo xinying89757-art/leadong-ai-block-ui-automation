@@ -4,7 +4,7 @@ import path from "node:path";
 import { assertPageCapacityAvailable } from './ai-platform-errors.mjs';
 import { chromium } from "playwright";
 import { pageCreationRequest, pageCreationResult, pagePath, comparePageIdentity } from './page-identity.mjs';
-import { authConfig, automaticLogin, ensureAuthenticated, isLoginPage } from "./auth.mjs";
+import { authConfig, automaticLogin, dismissBlockingModals, ensureAuthenticated, isLoginPage } from "./auth.mjs";
 import { browserLaunchOptions } from "./browser-options.mjs";
 
 function regex(source) {
@@ -234,6 +234,7 @@ export class LeadongEditor {
       throw new Error("登录状态失效，自动登录未能恢复，请检查外部账号配置或运行 npm run auth");
     }
     if (this.page.url().includes(this.config.siteListUrlIncludes)) {
+      await dismissBlockingModals(this.page);
       await this.enterTargetSite();
     }
     if (!this.page.url().includes("/phoenix/pagebuilder")) {

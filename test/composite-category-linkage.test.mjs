@@ -11,6 +11,7 @@ import { chromium } from 'playwright';
 import { browserLaunchOptions } from '../src/browser-options.mjs';
 import { AiCompositeProductsAutomation } from '../src/ai-composite-products-runner.mjs';
 import { writeCompositeJson } from '../src/ai-composite-state.mjs';
+import { resolveSetting } from '../src/config.mjs';
 
 test('分类联动从 Products 系统页生成并固定测试分类，不复用自定义页状态',async()=>{
   const config=await loadConfig();const runId='products-unit';
@@ -109,7 +110,7 @@ test('本地浏览器验证真实点击分类跳转，并拒绝拿原生列表�
   const temp=await mkdtemp(path.join(os.tmpdir(),'composite-click-'));
   let browser;
   try{
-    try { browser=await chromium.launch(browserLaunchOptions({browser:{channel:process.env.LEADONG_TEST_BROWSER_CHANNEL ?? 'chromium',headless:true}}, {}, process.env)); }
+    try { browser=await chromium.launch(browserLaunchOptions({browser:{channel:resolveSetting('LEADONG_TEST_BROWSER_CHANNEL','chromium',process.env),headless:true}}, {}, process.env)); }
     catch (error) { t.skip(`browser unavailable in this environment: ${error.message.split('\n')[0]}`); return; }
     const cards=ids=>`<div data-block-uuid="ai-productlist"><ul>${ids.map(id=>`<li class="prodlist-site-block" data-pid="${id}"><a class="titleLabel" href="/p-pd123.html">产品${id}</a></li>`).join('')}</ul></div>`;
     const block=ids=>`<div id="round-block"><div data-block-uuid="ai-groupProduct"><a href="/test-pl123.html">测试分类</a></div>${cards(ids)}</div>`;

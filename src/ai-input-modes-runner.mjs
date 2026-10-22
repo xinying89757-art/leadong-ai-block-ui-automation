@@ -1,4 +1,4 @@
-import { pollUntil } from "./wait-utils.mjs";
+import { fillAndVerify, pollUntil } from "./wait-utils.mjs";
 import { stat, writeFile } from "node:fs/promises";
 import { AiBlockAutomation } from "./ai-runner.mjs";
 import { AiDialogPointsReader } from "./ai-points.mjs";
@@ -227,8 +227,7 @@ export class AiInputModesAutomation {
     await waitFor(() => tab.evaluate((element) => element.classList.contains("active")).catch(() => false), this.config.timeouts.actionMs, `${record.input_mode_label}页签`);
     if (record.input_mode === "text") {
       const prompt = frame.locator(this.config.selectors.aiCardPromptSelector).first();
-      await prompt.fill(record.original_prompt);
-      if ((await prompt.inputValue()).trim() !== record.original_prompt.trim()) throw new Error("文字描述未成功填入");
+      await fillAndVerify(prompt, record.original_prompt);
     } else if (record.input_mode === "image") {
       const fileInput = frame.locator(this.config.selectors.aiUploadFileSelector).first();
       await fileInput.setInputFiles(record.image_path);
@@ -251,14 +250,16 @@ export class AiInputModesAutomation {
         }).catch(() => false), this.config.timeouts.actionMs, "上传图片预览");
       }
       const prompt = frame.locator(this.config.selectors.aiPlainPromptSelector).first();
-      await prompt.fill(`[runId=${this.runId},input=image] Use the uploaded image as the visual reference. Create the English static image-and-text block with the exact heading "${record.heading}", a concise description, and a Learn More CTA.`);
+      const promptText = `[runId=${this.runId},input=image] Use the uploaded image as the visual reference. Create the English static image-and-text block with the exact heading "${record.heading}", a concise description, and a Learn More CTA.`;
+      await fillAndVerify(prompt, promptText);
       record.original_prompt = await prompt.inputValue();
     } else if (record.input_mode === "url") {
       const url = frame.locator(this.config.selectors.aiUrlSelector).first();
       await url.fill(record.reference_url);
       if ((await url.inputValue()).trim() !== record.reference_url) throw new Error("参考网址未成功填入");
       const prompt = frame.locator(this.config.selectors.aiPlainPromptSelector).first();
-      await prompt.fill(`[runId=${this.runId},input=url] Use the provided webpage as visual reference. Create an English static image-and-text block with the exact heading "${record.heading}", a concise description, an image area, and a Learn More CTA.`);
+      const promptText = `[runId=${this.runId},input=url] Use the provided webpage as visual reference. Create an English static image-and-text block with the exact heading "${record.heading}", a concise description, an image area, and a Learn More CTA.`;
+      await fillAndVerify(prompt, promptText);
       record.original_prompt = await prompt.inputValue();
     } else {
       throw new Error(`不支持的输入方式：${record.input_mode}`);

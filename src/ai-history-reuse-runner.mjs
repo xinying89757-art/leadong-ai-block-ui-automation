@@ -1,4 +1,4 @@
-import { sleep } from "./wait-utils.mjs";
+import { fillAndVerify, sleep } from "./wait-utils.mjs";
 import path from "node:path";
 import { isGlobalSafetyFailure } from './ai-regression-state.mjs';
 import { AiBlockAutomation } from "./ai-runner.mjs";
@@ -267,8 +267,7 @@ export class AiHistoryReuseAutomation {
     await this.blockBase.selectType(frame, section.type);
     await this.blockBase.selectGenerationMode(frame);
     const prompt = frame.locator(this.config.selectors.aiPromptSelector).first();
-    await prompt.fill(section.generation.prompt);
-    if ((await prompt.inputValue()).trim() !== section.generation.prompt) throw new Error("静态图文提示词未成功填入");
+    await fillAndVerify(prompt, section.generation.prompt);
     const generate = frame.locator(this.config.selectors.aiGenerateSelector).first();
     await this.blockBase.waitForAiControlReady(frame, generate, "AI 开始生成按钮");
     section.history.baseline_count = await frame.locator(this.config.selectors.aiHistoryCardSelector).count().catch(() => 0);

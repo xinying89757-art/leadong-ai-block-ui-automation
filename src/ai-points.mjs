@@ -1,4 +1,4 @@
-import { sleep } from "./wait-utils.mjs";
+import { pollUntil, sleep } from "./wait-utils.mjs";
 import { measuredCost } from "./ai-mode-points-state.mjs";
 
 export function parseAvailablePoints(text) {
@@ -24,7 +24,19 @@ export class AiDialogPointsReader {
       await panel.waitFor({ state: "visible", timeout: this.config.timeouts.actionMs });
       const detail = panel.locator(".moli-credit-detail");
       await detail.waitFor({ state: "visible", timeout: this.config.timeouts.actionMs });
-      return parseAvailablePoints(await detail.innerText());
+      let previous;
+      return await pollUntil(async () => {
+        const loading = panel.locator('.el-loading-mask, [aria-busy="true"], .spinner, .loading, [class*="loading"]');
+        let loadingVisible = false;
+        for (let index = 0, count = await loading.count().catch(() => 0); index < count; index += 1) {
+          if (await loading.nth(index).isVisible().catch(() => false)) { loadingVisible = true; break; }
+        }
+        if (loadingVisible) { previous = undefined; return false; }
+        const current = parseAvailablePoints(await detail.innerText());
+        if (previous === current) return current;
+        previous = current;
+        return false;
+      }, { timeoutMs: this.config.timeouts.actionMs, intervalMs: Math.min(150, Math.max(1, Math.floor(this.config.timeouts.actionMs / 4))), message: "等待可用点数稳定超时", retryOnError: true });
     } catch (error) {
       if (/无法解析 MoliAI 可用点数/.test(error.message)) throw error;
       throw new Error("AI 弹窗设置面板的可用点数读取失败，请检查登录态或点数面板");

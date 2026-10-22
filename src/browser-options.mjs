@@ -6,6 +6,8 @@ function parseBoolean(value, name) {
   throw new TypeError(`${name} must be true, false, 1, or 0`);
 }
 
+import { resolveSetting } from "./config.mjs";
+
 function parseSlowMo(value) {
   if (value === undefined || value === null || String(value).trim() === "") return undefined;
   const milliseconds = Number(value);
@@ -17,10 +19,10 @@ function parseSlowMo(value) {
 export function browserLaunchOptions(config = {}, overrides = {}, env = process.env) {
   const browser = config.browser ?? config;
   const isCi = Boolean(env.CI) && String(env.CI).toLowerCase() !== "false";
-  const channelValue = env.LEADONG_BROWSER_CHANNEL;
+  const channelValue = resolveSetting("LEADONG_BROWSER_CHANNEL", undefined, env, { allowEmpty: true });
   const channel = channelValue === undefined ? (isCi ? "" : browser.channel ?? "chrome") : channelValue.trim();
-  const headless = parseBoolean(env.LEADONG_HEADLESS, "LEADONG_HEADLESS") ?? overrides.headless ?? (isCi ? true : browser.headless ?? false);
-  const slowMo = parseSlowMo(env.LEADONG_SLOW_MO) ?? overrides.slowMo ?? browser.slowMo ?? 0;
+  const headless = parseBoolean(resolveSetting("LEADONG_HEADLESS", undefined, env), "LEADONG_HEADLESS") ?? overrides.headless ?? (isCi ? true : browser.headless ?? false);
+  const slowMo = parseSlowMo(resolveSetting("LEADONG_SLOW_MO", undefined, env)) ?? overrides.slowMo ?? browser.slowMo ?? 0;
   const options = { headless, slowMo };
   if (channel && channel.toLowerCase() !== "chromium") options.channel = channel;
   return options;

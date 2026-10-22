@@ -32,3 +32,9 @@ test("slow motion environment override accepts zero and rejects invalid values",
   assert.throws(() => browserLaunchOptions(config, {}, { LEADONG_SLOW_MO: "-1" }), /non-negative/);
   assert.throws(() => browserLaunchOptions(config, {}, { LEADONG_HEADLESS: "sometimes" }), /true, false, 1, or 0/);
 });
+
+test("deprecated AIBLOCK browser overrides are fallback values", () => {
+  assert.equal(browserLaunchOptions(config, {}, { LEADONG_HEADLESS: "0", AIBLOCK_HEADLESS: "1" }).headless, false);
+  assert.equal(browserLaunchOptions(config, {}, { AIBLOCK_BROWSER_CHANNEL: "msedge" }).channel, "msedge");
+  assert.equal(browserLaunchOptions(config, {}, { AIBLOCK_SLOWMO: "24" }).slowMo, 24);
+});

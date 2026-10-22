@@ -44,6 +44,17 @@ export async function retry(fn, {
   }
 }
 
+export async function fillAndVerify(locator, text) {
+  const expected = String(text).trim();
+  let actual = "";
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await locator.fill(text);
+    actual = await locator.inputValue();
+    if (String(actual).trim() === expected) return actual;
+  }
+  throw new Error(`提示词填入校验失败：重试 2 次后仍与预期不一致（预期 ${expected.length} 字符，实际 ${String(actual).trim().length} 字符）`);
+}
+
 // Does not cancel the underlying operation. Both settlement paths clear the
 // guard timer so successful calls do not keep Node alive until the deadline.
 export async function withTimeout(promise, ms, message = "操作等待超时") {

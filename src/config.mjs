@@ -5,18 +5,53 @@ import { fileURLToPath } from "node:url";
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
 export const projectRoot = path.resolve(sourceDir, "..");
 
-const legacyEnvironmentNames = {
-  LEADONG_ADMIN_ACCOUNT: "BUG1004949_ADMIN_ACCOUNT",
-  LEADONG_ADMIN_PASSWORD: "BUG1004949_ADMIN_PASSWORD",
-  LEADONG_ADMIN_CONFIG: "BUG1004949_ADMIN_CONFIG",
+const settingAliases = {
+  LEADONG_ADMIN_ACCOUNT: ["AIBLOCK_ADMIN_ACCOUNT", "BUG1004949_ADMIN_ACCOUNT"],
+  LEADONG_ADMIN_PASSWORD: ["AIBLOCK_ADMIN_PASSWORD", "BUG1004949_ADMIN_PASSWORD"],
+  LEADONG_ADMIN_CONFIG: ["AIBLOCK_ADMIN_CONFIG", "BUG1004949_ADMIN_CONFIG"],
+  LEADONG_TEST_IMAGE: ["AIBLOCK_TEST_IMAGE"],
+  LEADONG_BROWSER_CHANNEL: ["AIBLOCK_BROWSER_CHANNEL"],
+  LEADONG_HEADLESS: ["AIBLOCK_HEADLESS"],
+  LEADONG_SLOW_MO: ["AIBLOCK_SLOW_MO", "AIBLOCK_SLOWMO"],
+  LEADONG_TEST_BROWSER_CHANNEL: ["AIBLOCK_TEST_BROWSER_CHANNEL"],
 };
 
-export function leadongEnv(name, fallback) {
-  const value = process.env[name];
-  if (value !== undefined && value !== "") return value;
-  const legacyName = legacyEnvironmentNames[name];
-  const legacyValue = legacyName ? process.env[legacyName] : undefined;
-  return legacyValue !== undefined && legacyValue !== "" ? legacyValue : fallback;
+export function resolveSetting(name, fallback, env = process.env, { allowEmpty = false } = {}) {
+  const names = [name, ...(settingAliases[name] ?? [])];
+  for (const alias of names) {
+    const value = env[alias];
+    if (value !== undefined && (allowEmpty || value !== "")) return value;
+  }
+  return fallback;
+}
+
+export const leadongEnv = resolveSetting;
+
+export function parseLocalEnvironment(contents, env = process.env) {
+  for (const line of String(contents).split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const separator = trimmed.indexOf("=");
+    if (separator < 1) continue;
+    const key = trimmed.slice(0, separator).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || env[key] !== undefined) continue;
+    let value = trimmed.slice(separator + 1).trim();
+    if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1);
+    }
+    env[key] = value;
+  }
+  return env;
+}
+
+export async function loadLocalEnvironment(root = projectRoot, env = process.env) {
+  // Keep offline tests isolated from any real workstation-local configuration.
+  if (root === projectRoot && env === process.env && (process.argv.includes("--test") || process.env.NODE_TEST_CONTEXT)) return;
+  try {
+    parseLocalEnvironment(await readFile(path.resolve(root, ".env.local"), "utf8"), env);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
 }
 
 function isPlainObject(value) {
@@ -42,6 +77,7 @@ export function resolveProjectPath(value) {
 }
 
 export async function loadConfig(overridePath = "config/run.json") {
+  await loadLocalEnvironment();
   const defaults = await readJson(path.resolve(projectRoot, "config/default.json"));
   const override = overridePath ? await readJson(resolveProjectPath(overridePath)) : {};
   const config = deepMerge(defaults, override);
@@ -49,7 +85,7 @@ export async function loadConfig(overridePath = "config/run.json") {
     if (typeof value === "string" && value) config.paths[key] = resolveProjectPath(value);
   }
   if (config.htmlUploadRegression?.filePath) config.htmlUploadRegression.filePath = resolveProjectPath(config.htmlUploadRegression.filePath);
-  const testImagePath = process.env.LEADONG_TEST_IMAGE || config.ai?.inputModeRegression?.imagePath;
+  const testImagePath = resolveSetting("LEADONG_TEST_IMAGE", config.ai?.inputModeRegression?.imagePath);
   if (testImagePath) {
     config.ai.inputModeRegression.imagePath = resolveProjectPath(testImagePath);
   }

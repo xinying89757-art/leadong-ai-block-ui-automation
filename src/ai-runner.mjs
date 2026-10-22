@@ -1,4 +1,4 @@
-import { pollUntil } from "./wait-utils.mjs";
+import { fillAndVerify, pollUntil } from "./wait-utils.mjs";
 import { aiPageDescriptor } from "./config.mjs";
 import {
   AiStateStore,
@@ -539,7 +539,7 @@ export class AiBlockAutomation {
     await this.selectGenerationMode(frame);
     const prompt = frame.locator(this.config.selectors.aiPromptSelector).first();
     const originalPrompt = record.original_prompt ?? record.prompt;
-    await prompt.fill(originalPrompt);
+    await fillAndVerify(prompt, originalPrompt);
     let generationPrompt = originalPrompt;
     try {
       generationPrompt = await this.polishPrompt(frame, record, prompt);
@@ -556,8 +556,9 @@ export class AiBlockAutomation {
     const reference = this.aiConfig.runId ? `[runId=${this.aiConfig.runId},type=${record.type}${attemptSuffix}]` : '';
     if (reference && !generationPrompt.includes(reference)) {
       generationPrompt = `${reference} ${generationPrompt}`;
-      await prompt.fill(generationPrompt);
+      await fillAndVerify(prompt, generationPrompt);
     }
+    await fillAndVerify(prompt, generationPrompt);
     record.generation_prompt = generationPrompt;
     await this.persist();
     const generate = frame.locator(this.config.selectors.aiGenerateSelector).first();

@@ -1,4 +1,4 @@
-import { pollUntil, sleep } from "./wait-utils.mjs";
+import { fillAndVerify, pollUntil, sleep } from "./wait-utils.mjs";
 import {
   assertFullPageState,
   fullPagePaths,
@@ -287,8 +287,7 @@ export class AiFullPageAutomation {
     }
     if (!labels.some(label => selectedText.includes(label))) throw new Error("快速模式选择失败");
     const prompt = frame.locator("textarea.ai-prompt-input--card").first();
-    await prompt.fill(promptText);
-    if ((await prompt.inputValue()).trim() !== promptText) throw new Error("整页提示词未成功填入");
+    await fillAndVerify(prompt, promptText);
     // Allow the AI editor's debounced prompt state to catch up before submit.
     await frame.waitForTimeout(1500);
     if ((await prompt.inputValue()).trim() !== promptText) throw new Error("整页提示词在提交前发生变化");
