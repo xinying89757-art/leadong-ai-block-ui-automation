@@ -26,7 +26,7 @@ export async function runNewFlowCli(flow, Runner, argv = process.argv.slice(2)) 
   assertFlowState(state, config, flow, runId);
   if (command === 'status') { console.log(JSON.stringify(state, null, 2)); return; }
   const runner = new Runner(null, config, runId);
-  await runner.initialize();
+  await runner.initialize({ command });
   let context;
   try {
     const launched = await launchEditorBrowser(config, { headless: true, isolatedProfile: false });

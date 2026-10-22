@@ -72,51 +72,71 @@ export class AiResultActionsAutomation extends NewFlowAutomation {
       assertDiscardedSnapshot(step.baseline, after);
       for (const canvas of this.editor.canvasContexts()) if ((await canvas.locator('#backstage-bodyArea').innerText()).includes(step.edited_token)) throw new Error('Discarded edit appeared in the committed canvas');
       step.application_status = 'discarded'; step.discard_verified = true;
-      await this.editor.openCustomPage(this.state.page.name);
+      await this.editor.openCustomPage((this.currentPage ?? this.state.page).name);
       const persisted = await this.snapshot();
       assertDiscardedSnapshot(step.baseline, persisted);
       await this.shot(`${step.key}-discarded`, step);
     }
   }
   async recoverGeneration(step) {
-    const frame = await this.base.openAiDialog();
-    const trigger = frame.locator(this.config.selectors.aiHistoryTriggerSelector);
-    await trigger.click();
-    const cards = frame.locator(this.config.selectors.aiHistoryCardSelector).filter({ hasText: step.token });
-    await cards.first().waitFor({ state: 'visible', timeout: 15000 });
-    if (await cards.count() !== 1) throw new Error('Generation recovery is ambiguous; refusing duplicate generation');
-    const insert = cards.getByRole('button', { name: /插入|应用模块/ });
-    await insert.waitFor({ state: 'visible', timeout: this.mode.generationTimeoutMs });
-    await insert.click();
-    await this.result(frame, { requireEnabled: false });
-    step.generation_status = 'succeeded'; await this.persist(); return frame;
+    if (step.key === 'return-modify' && !step.return_verified) throw new Error('Return-modify result context was lost before its assertion; refusing an unrecorded duplicate generation');
+    const frame = await this.recoverOwnedHistory(step);
+    if (step.key === 'regenerate-apply' && !step.regenerated) {
+      if (step.regeneration_status === 'running') {
+        step.history_after = await this.historyCount(frame);
+        assertHistoryIncrement(step.history_before, step.history_after);
+        step.regenerated = true; step.regeneration_status = 'succeeded'; await this.persist();
+      } else throw new Error('Regeneration was not started before context loss; recovered history cannot prove the result-page button action');
+    }
+    return frame;
   }
   async run() {
-    await this.ownPage();
+    if (this.state.page.cleanup_status === 'completed') throw new Error('Run was cleaned up');
     for (const step of this.state.steps) {
+      this.currentPage = step.page ?? this.state.page;
       const action = resumeStepAction(step); if (action === 'skip') continue;
       this.activeStep = step; step.status = 'running'; step.failure_reason = ''; await this.persist();
-      if (action === 'verify-commit') await this.finishCommit(step);
-      else if (step.application_status !== 'applied' && step.application_status !== 'discarded') {
-        const frame = action === 'generate' ? await this.generate(step, this.mode.mode) : await this.recoverGeneration(step);
-        if (step.key === 'regenerate-apply') await this.regenerate(frame, step);
-        step.baseline ??= await this.snapshot(); await this.persist();
-        if (step.key === 'return-modify') {
-          await this.returnModify(frame, step); step.status = 'passed'; await this.persist(); continue;
+      try {
+        await this.ownPage();
+        if (action === 'verify-discard') {
+          assertDiscardedSnapshot(step.baseline, await this.snapshot());
+          for (const canvas of this.editor.canvasContexts()) if ((await canvas.locator('#backstage-bodyArea').innerText()).includes(step.edited_token)) throw new Error('Discarded edit persisted');
+          step.application_status = 'discarded'; step.discard_verified = true;
+        } else if (action === 'verify-commit') await this.finishCommit(step);
+        else if (step.application_status !== 'applied' && step.application_status !== 'discarded') {
+          const frame = action === 'generate' ? await this.generate(step, this.mode.mode) : await this.recoverGeneration(step);
+          if (step.key === 'regenerate-apply') await this.regenerate(frame, step);
+          step.baseline ??= await this.snapshot(); await this.persist();
+          if (step.key === 'return-modify') {
+            await this.returnModify(frame, step); step.status = 'passed'; await this.persist(); continue;
+          }
+          await this.fullscreen(frame, step);
+          if (step.key === 'regenerate-apply') await this.applyNew(frame, step);
+          else { await this.changeHeading(step); await this.exitChanged(frame, step); }
         }
-        await this.fullscreen(frame, step);
-        if (step.key === 'regenerate-apply') await this.applyNew(frame, step);
-        else { await this.changeHeading(step); await this.exitChanged(frame, step); }
+        if (step.application_status === 'applied') {
+          try { await this.saveAndPreview(step); step.preview_failure = ''; }
+          catch (error) { step.preview_failure = error.message; await this.shot(`${step.key}-preview-failure`, step); }
+        }
+        step.status = step.preview_failure ? 'failed' : 'passed'; await this.persist();
+      } catch (error) {
+        step.status = 'failed'; step.failure_reason = error.message;
+        await this.shot(`${step.key}-failure`, step).catch(() => {}); await this.persist();
+        // Isolate independent business failures after generation. Identity,
+        // authentication and page-creation failures still stop the run.
+        const isolatedBusinessFailure = step.baseline && step.generation_status === 'succeeded' &&
+          !/identity|ownership|collision|receipt|ambiguous|authentication|登录|权限/i.test(error.message);
+        if (error.code !== 'AI_COMMIT_UNCONFIRMED' && !isolatedBusinessFailure) throw error;
+        const nextPage = await this.editor.page.context().newPage();
+        this.editor.page = nextPage;
+        await this.editor.goto(); this.attach(this.editor);
       }
-      if (step.application_status === 'applied') {
-        try { await this.saveAndPreview(step); step.preview_failure = ''; }
-        catch (error) { step.preview_failure = error.message; await this.shot(`${step.key}-preview-failure`, step); }
-      }
-      step.status = step.preview_failure ? 'failed' : 'passed'; await this.persist();
     }
-    this.state.conclusion = 'Committed canvas checks exclude temporary AI frames, wait for the editor overlay to clear, require a stable block-count increase of exactly one, and verify the heading in canvas and preview. See per-step commit observations and screenshots.';
-    const failures = this.state.steps.filter(step => step.status !== 'passed');
-    if (failures.length) throw new Error(failures.map(step => `${step.key}: ${step.preview_failure || step.failure_reason}`).join('; '));
+    this.state.conclusion = this.state.steps.some(step => step.application_status === 'applying')
+      ? 'At least one Apply action did not add a committed block within the bounded wait after the overlay cleared. The page is isolated; no repeat Apply or top-level Save was attempted. See commit observations and independent diagnostic evidence.'
+      : 'All completed application checks used the committed canvas, excluded temporary AI frames, waited for the overlay, and required exactly one new block with the heading. Preview outcomes are recorded separately.';
+    const failedSteps = this.state.steps.filter(step => step.status !== 'passed');
+    if (failedSteps.length) throw new Error(failedSteps.map(step => `${step.key}: ${step.preview_failure || step.failure_reason}`).join('; '));
     return this.complete();
   }
 }

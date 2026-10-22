@@ -85,3 +85,26 @@ test('exclusive run creation refuses concurrent duplicate IDs and preserves the 
     assert.deepEqual(JSON.parse(await readFile(file,'utf8')),state);
   } finally {await rm(root,{recursive:true});}
 });
+
+test('result cases have independent owned pages, validated before cleanup', () => {
+  const state=createFlowState(config,'result-actions','isolated');
+  const pages=[state.page,...state.steps.slice(1).map(step=>step.page)];
+  assert.equal(new Set(pages.map(page=>page.path)).size,4);
+  assertFlowState(state,config,'result-actions','isolated');
+  state.steps[2].page.path='/existing-page';
+  assert.throws(()=>assertFlowState(state,config,'result-actions','isolated'),/ownership/);
+});
+
+test('an interrupted discard is verified without inserting its history again', () => {
+  assert.equal(resumeStepAction({status:'failed',generation_status:'succeeded',application_status:'discarding'}),'verify-discard');
+});
+
+test('history recovery selects only a unique newest owned record and never falls back past a failure', async () => {
+  const {selectOwnedHistoryRecord}=await import('../src/ai-new-flow-state.mjs');
+  const older='owned prompt 已完成 2026-10-22 15:10:00',newer='owned prompt 已完成 2026-10-22 15:20:00';
+  assert.deepEqual(selectOwnedHistoryRecord([older,newer],2),{index:1,timestamp:'2026-10-22 15:20:00'});
+  assert.throws(()=>selectOwnedHistoryRecord([older,older],2),/ambiguous/);
+  assert.throws(()=>selectOwnedHistoryRecord([older],2),/ambiguous/);
+  assert.throws(()=>selectOwnedHistoryRecord(['missing date'],1),/timestamp/);
+  assert.throws(()=>selectOwnedHistoryRecord([older,newer.replace('已完成','生成失败')],2),/failed/);
+});

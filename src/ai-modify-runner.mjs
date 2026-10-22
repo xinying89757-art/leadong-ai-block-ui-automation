@@ -13,7 +13,7 @@ export class AiModifyAutomation extends NewFlowAutomation {
     // A native pointer selects that mask and reveals its actual toolbar.
     await this.editor.page.mouse.move(box.x + Math.min(40, box.width / 2), box.y + Math.min(40, box.height / 2));
     await this.editor.page.mouse.click(box.x + Math.min(40, box.width / 2), box.y + Math.min(40, box.height / 2));
-    const wrapperId = await block.evaluate(node => node.closest('.siteblocks-setting-wrap, .backstage-blocksEditor-wrap')?.id || '');
+    const wrapperId = await block.evaluate(node => node.closest('.siteblocks-setting-wrap')?.id || node.querySelector('.siteblocks-setting-wrap')?.id || node.closest('.backstage-blocksEditor-wrap')?.id || '');
     if (!wrapperId) throw new Error('Owned AI block wrapper missing');
     const controls = frame.locator('.ai-block-ai-modify-btn').filter({ visible: true });
     const matching = await wait(async () => {

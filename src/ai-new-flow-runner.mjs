@@ -5,7 +5,7 @@ import { AiDialogPointsReader, parseAvailablePoints } from './ai-points.mjs';
 import { fillAndVerify, pollUntil } from './wait-utils.mjs';
 import { committedAiSnapshot, isTemporaryAiFrame, waitForAiCommit } from './ai-canvas-commit.mjs';
 import { comparePageIdentity } from './page-identity.mjs';
-import { assertFlowState, assertCreditDelta, flowConfig, flowPaths, readFlowJson, writeFlowJson, renderFlowReport, previewTarget } from './ai-new-flow-state.mjs';
+import { assertFlowState, assertCreditDelta, flowConfig, flowPaths, readFlowJson, writeFlowJson, renderFlowReport, previewTarget, selectOwnedHistoryRecord } from './ai-new-flow-state.mjs';
 export const visible = locator => locator.isVisible().catch(() => false);
 export const wait = (check, timeoutMs, message) => pollUntil(check, { timeoutMs, intervalMs: 250, message });
 export class NewFlowAutomation {
@@ -40,11 +40,14 @@ export class NewFlowAutomation {
     });
     editor.page.on('pageerror', () => this.state.diagnostics.push({ type: 'pageerror', at: new Date().toISOString() }));
   }
-  async initialize() {
+  async initialize({ command = 'run' } = {}) {
     this.state = await readFlowJson(this.paths.state);
     assertFlowState(this.state, this.config, this.flow, this.runId);
     this.state.started_at ||= new Date().toISOString();
-    this.state.status = 'running';
+    this.command = command;
+    if (['run','resume'].includes(command)) { this.state.status = 'running'; this.state.failure_reason = ''; }
+    this.state.attempts ??= [];
+    this.state.attempts.push({ command, started_at: new Date().toISOString(), status: 'running' });
     await this.persist();
   }
   async persist() {
@@ -63,12 +66,13 @@ export class NewFlowAutomation {
     this.state.ended_at = new Date().toISOString();
     this.state.duration_ms = Date.parse(this.state.ended_at) - Date.parse(this.state.started_at);
     const step = this.state.steps.find(item => item.status === 'running');
-    if (step) step.failure_reason = error.message;
+    if (step) { step.failure_reason = error.message; step.status = 'failed'; }
+    this.finishAttempt('failed', error.message);
     if (this.editor) await this.shot('failure', step).catch(() => {});
     await this.persist();
   }
   async ownPage() {
-    const page = this.state.page;
+    const page = this.currentPage ?? this.state.page;
     if (page.cleanup_status === 'completed') throw new Error('Run was cleaned up');
     const exists = await this.editor.customPageExists(page.name);
     if (!exists) {
@@ -83,10 +87,11 @@ export class NewFlowAutomation {
   }
   async assertOwnedIdentity() {
     const actual = await this.editor.currentPageIdentity();
-    const expected = { name: this.state.page.name, path: this.state.page.path, id: this.state.page.creation_receipt?.id };
+    const page = this.currentPage ?? this.state.page;
+    const expected = { name: page.name, path: page.path, id: page.creation_receipt?.id };
     if (!comparePageIdentity(expected, actual).matched) throw new Error('Current page does not match owned page');
   }
-  snapshot() { return committedAiSnapshot(this.editor.canvasContexts()); }
+  snapshot() { return committedAiSnapshot(this.editor.canvasContexts(), { ownedBlankPage: true }); }
   async block(id) {
     const matches = [];
     for (const frame of this.editor.canvasContexts()) {
@@ -166,18 +171,10 @@ export class NewFlowAutomation {
       const count = await cards.count();
       if (!count) return false;
       const expected = step.regeneration_status ? 2 : 1;
-      if (count !== expected) throw new Error('Owned generation history is ambiguous; refusing to regenerate');
-      const candidates = [];
-      for (const card of await cards.all()) {
-        const text = await card.innerText();
-        const timestamp = text.match(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/)?.[0];
-        if (!timestamp) throw new Error('Owned history record has no readable timestamp');
-        candidates.push({ card, text, timestamp });
-      }
-      candidates.sort((a,b) => b.timestamp.localeCompare(a.timestamp));
-      if (candidates.length > 1 && candidates[0].timestamp === candidates[1].timestamp) throw new Error('Owned history timestamps are ambiguous');
-      const selected = candidates[0];
-      if (/生成失败|已自动退还/.test(selected.text)) throw new Error('Owned generation failed on the platform');
+      if (count < expected) return false;
+      const texts = await cards.allInnerTexts();
+      const selection = selectOwnedHistoryRecord(texts, expected);
+      const selected = { card: cards.nth(selection.index), text: texts[selection.index], timestamp: selection.timestamp };
       const control = selected.card.getByRole('button', { name: /插入/ });
       return await visible(control) && await control.isEnabled() ? { ...selected, control } : false;
     }, this.mode.generationTimeoutMs, 'Owned history result did not complete');
@@ -207,6 +204,20 @@ export class NewFlowAutomation {
     await frame.locator(this.config.selectors.aiDialogSelector).waitFor({ state: 'hidden', timeout: 15000 });
     const header = frame.locator('.header-container').filter({ hasText: '编辑区块' });
     await header.getByRole('button', { name: '应用', exact: true }).waitFor({ state: 'visible', timeout: 15000 });
+    const apply = header.getByRole('button', { name: '应用', exact: true });
+    await this.base.waitForAiControlReady(frame, apply, 'Full-screen Apply');
+    let stableSince = 0, signature = '';
+    await wait(async () => {
+      let next = '';
+      for (const candidate of this.editor.page.frames()) {
+        if (!isTemporaryAiFrame(candidate)) continue;
+        const heading = candidate.locator('h1,h2,h3,h4').filter({ hasText: step.token }).first();
+        if (await visible(heading)) { next = await heading.innerText(); break; }
+      }
+      if (!next || next !== signature) { signature = next; stableSince = Date.now(); return false; }
+      return Date.now() - stableSince >= 1000;
+    }, 15000, 'Full-screen generated heading did not stabilize');
+    step.fullscreen_evidence = { token: step.token, heading: signature, stable_ms: 1000, apply_ready: true };
     await this.shot(`${step.key}-fullscreen`, step); return header;
   }
   async applyNew(frame, step, { confirmation = false } = {}) {
@@ -229,7 +240,11 @@ export class NewFlowAutomation {
       if (observations.length < 100) observations.push({ elapsed_ms: Date.now() - started, ...value });
       return value;
     }, step.baseline, { timeoutMs: this.mode.commitTimeoutMs });
-    } finally { step.commit_observations = observations; await this.persist(); }
+    } finally {
+      step.commit_wait_ms = Date.now() - started;
+      observations.push({ elapsed_ms: step.commit_wait_ms, ...step.last_commit_observation });
+      step.commit_observations = observations; await this.persist();
+    }
     step.commit_observations = observations; step.committed_block_id = committed.addedId;
     await this.waitToken(committed.addedId, step.edited_token ?? step.token);
     step.application_status = 'applied'; step.editor_verified = true;
@@ -240,11 +255,14 @@ export class NewFlowAutomation {
     try { step.save_evidence = await this.editor.savePage(); }
     catch (error) {
       // AI Apply saves immediately; a clean Save button may emit no response.
-      await this.editor.openCustomPage(this.state.page.name);
+      await this.editor.openCustomPage((this.currentPage ?? this.state.page).name);
       await this.waitToken(step.committed_block_id, token);
       step.save_evidence = { evidence: 'reopen', warning: error.message };
     }
     step.saved = true; await this.persist();
+    await this.editor.openCustomPage((this.currentPage ?? this.state.page).name);
+    await this.waitToken(step.committed_block_id, token);
+    step.reopen_verified = true; await this.shot(`${step.key}-saved-reopened`, step);
     const link = this.editor.page.locator('.clickToPreview a').first();
     const href = await link.getAttribute('href');
     const target = previewTarget(href, this.editor.page.url());
@@ -252,7 +270,7 @@ export class NewFlowAutomation {
     // toolbar suppresses native popup navigation in some headless sessions.
     const preview = await this.editor.page.context().newPage();
     try {
-      await preview.goto(target, { waitUntil: 'domcontentloaded', timeout: Math.min(20000, this.mode.commitTimeoutMs) });
+      await preview.goto(target, { waitUntil: 'domcontentloaded', timeout: this.mode.commitTimeoutMs });
       await wait(async () => {
         for (const frame of preview.frames()) {
           if ((await frame.locator('body').innerText().catch(() => '')).includes(token)) return true;
@@ -261,27 +279,40 @@ export class NewFlowAutomation {
       }, this.mode.commitTimeoutMs, `Preview missing ${token}`);
       const file = path.join(this.paths.report, `${step.key}-preview.png`);
       await preview.screenshot({ path: file }); step.evidence.push(file); step.preview_verified = true;
+    } catch (error) {
+      step.preview_failure_details = { host: new URL(target).host, path: new URL(target).pathname, error: error.message };
+      const file = path.join(this.paths.report, `${step.key}-preview-unavailable.png`);
+      if (await preview.screenshot({ path: file, timeout: 5000 }).then(() => true).catch(() => false)) step.evidence.push(file);
+      await this.persist(); throw error;
     } finally { await preview.close(); }
     await this.persist();
   }
   async cleanup() {
     assertFlowState(this.state, this.config, this.flow, this.runId);
-    const page = this.state.page;
-    if (page.cleanup_status === 'completed') return;
-    if (!page.creation_receipt) {
-      if (page.create_status !== 'pending') throw new Error('Ambiguous creation without receipt; refusing cleanup');
-      page.cleanup_status = 'completed'; await this.persist(); return;
+    const pages = [this.state.page, ...this.state.steps.map(step => step.page).filter(Boolean)];
+    for (const page of pages) {
+      this.currentPage = page;
+      if (page.cleanup_status === 'completed') continue;
+      if (!page.creation_receipt) {
+        if (page.create_status !== 'pending') throw new Error('Ambiguous creation without receipt; refusing cleanup');
+        page.cleanup_status = 'completed'; await this.persist(); continue;
+      }
+      if (await this.editor.customPageExists(page.name)) {
+        await this.editor.openCustomPage(page.name); await this.assertOwnedIdentity();
+        const deleted = await this.editor.deleteCustomPage(page.name, { apply: true });
+        if (!deleted.applied || await this.editor.customPageExists(page.name)) throw new Error('Owned page deletion unconfirmed');
+      }
+      page.cleanup_status = 'completed'; await this.persist();
     }
-    if (await this.editor.customPageExists(page.name)) {
-      await this.editor.openCustomPage(page.name); await this.assertOwnedIdentity();
-      const deleted = await this.editor.deleteCustomPage(page.name, { apply: true });
-      if (!deleted.applied || await this.editor.customPageExists(page.name)) throw new Error('Owned page deletion unconfirmed');
-    }
-    page.cleanup_status = 'completed'; await this.persist();
+    this.finishAttempt('passed'); await this.persist();
+  }
+  finishAttempt(status, failure = '') {
+    const attempt = this.state.attempts?.at(-1);
+    if (attempt) Object.assign(attempt, { status, failure, ended_at: new Date().toISOString(), duration_ms: Date.now() - Date.parse(attempt.started_at) });
   }
   async complete() {
     this.state.status = 'passed'; this.state.ended_at = new Date().toISOString();
     this.state.duration_ms = Date.parse(this.state.ended_at) - Date.parse(this.state.started_at);
-    this.state.failure_reason = ''; await this.persist(); return this.state;
+    this.state.failure_reason = ''; this.finishAttempt('passed'); await this.persist(); return this.state;
   }
 }
