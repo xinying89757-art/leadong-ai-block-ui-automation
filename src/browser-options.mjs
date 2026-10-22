@@ -24,7 +24,7 @@ export function browserLaunchOptions(config = {}, overrides = {}, env = process.
   const envHeadless = parseBoolean(env.AIBLOCK_HEADLESS, "AIBLOCK_HEADLESS");
   const configuredHeadless = browser.headless ?? false;
   const isCi = Boolean(env.CI) && String(env.CI).toLowerCase() !== "false";
-  const headless = envHeadless ?? (overrides.headless === true ? true : (isCi ? true : configuredHeadless));
+  const headless = envHeadless ?? overrides.headless ?? (isCi ? true : configuredHeadless);
   const slowMo = parseSlowMo(env.AIBLOCK_SLOWMO) ?? overrides.slowMo ?? browser.slowMo ?? 0;
   const options = { headless, slowMo };
   // `chromium` and an empty value intentionally select Playwright's bundled browser.
