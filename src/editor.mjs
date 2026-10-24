@@ -869,11 +869,12 @@ export class LeadongEditor {
     const confirmCandidates = [];
     for (const scope of this.contexts()) {
       confirmCandidates.push(
-        scope.getByText(/^确定$/, { exact: true }),
-        scope.getByText(/^删除$/, { exact: true }),
-        scope.getByRole("button", { name: /^(确定|删除|确认)$/ }).last(),
+        scope.locator(".backstage-dialog-btns.backstage-dialog-submit:visible").filter({ hasText: /^(确定|删除|确认)$/ }),
         scope.locator(".layui-layer-btn0:visible").last(),
         scope.locator(".el-message-box__btns button:visible, .el-dialog__footer button:visible").filter({ hasText: /确定|删除|确认/ }).last(),
+        scope.getByRole("button", { name: /^(确定|删除|确认)$/ }).last(),
+        scope.getByText(/^确定$/, { exact: true }),
+        scope.getByText(/^删除$/, { exact: true }),
       );
     }
     const confirm = await firstVisible(confirmCandidates);

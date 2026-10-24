@@ -1,13 +1,19 @@
 import { AiCompositeRegressionAutomation } from './ai-composite-runner.mjs';
 import { createInitialAiState, assertAiStateCompatible } from './ai-state.mjs';
 import { aiPageDescriptor } from './config.mjs';
-import { snapshotSystemPageBlocks, assertSystemPageRestored } from './ai-system-page-snapshot.mjs';
+import { snapshotSystemPageBlocks, assertSystemPageRestored, countOwnedSystemPageBlocks } from './ai-system-page-snapshot.mjs';
 
 export class AiComboSystemPageAutomation extends AiCompositeRegressionAutomation {
   constructor(editor, config, store, pageNumber = 1, systemPage, categoryType = '') {
     super(editor, config, store, pageNumber);
     this.systemPage = systemPage;
     this.categoryType = categoryType;
+  }
+
+  async editorAiBlockCount() {
+    const record = this.state?.types?.[0];
+    const ownId = this.state?.ownership?.identity?.id || record?.committed_block_id || '';
+    return countOwnedSystemPageBlocks(await this.canvasSnapshot(), ownId);
   }
 
   async initialize({ resume = false } = {}) {

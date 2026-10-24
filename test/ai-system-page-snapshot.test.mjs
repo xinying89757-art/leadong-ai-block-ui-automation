@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { assertSystemPageRestored, categorySystemPageFor } from '../src/ai-system-page-snapshot.mjs';
+import { assertSystemPageRestored, categorySystemPageFor, countOwnedSystemPageBlocks } from '../src/ai-system-page-snapshot.mjs';
 
 test('system page restoration requires identical block IDs and order', () => {
   const before = [{ id: 'a', index: 0 }, { id: 'b', index: 1 }];
@@ -14,4 +14,11 @@ test('mixed category combo routes to the first category system page', () => {
   assert.deepEqual(categorySystemPageFor(['产品列表', '产品分类', '文章分类'], mapping), { category: '产品分类', systemPage: 'Products' });
   assert.deepEqual(categorySystemPageFor(['文章分类', '产品分类'], mapping), { category: '文章分类', systemPage: 'News' });
   assert.throws(() => categorySystemPageFor(['产品列表'], mapping), /必须包含/);
+});
+
+test('system-page editor count includes only the current run owned block', () => {
+  const snapshot = { ids: ['preexisting-system-block', 'owned-run-block', 'another-preexisting-block'] };
+  assert.equal(countOwnedSystemPageBlocks(snapshot, 'owned-run-block'), 1);
+  assert.equal(countOwnedSystemPageBlocks(snapshot, 'missing-run-block'), 0);
+  assert.equal(countOwnedSystemPageBlocks(snapshot, ''), 0);
 });

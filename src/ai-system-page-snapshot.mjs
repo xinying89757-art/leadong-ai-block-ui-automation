@@ -29,6 +29,11 @@ export function assertSystemPageRestored(before, after) {
   return true;
 }
 
+export function countOwnedSystemPageBlocks(snapshot, ownedId) {
+  if (!ownedId || !Array.isArray(snapshot?.ids)) return 0;
+  return snapshot.ids.filter(id => id === ownedId).length;
+}
+
 export function categorySystemPageFor(types, mapping) {
   const category = types.find(type => Object.hasOwn(mapping ?? {}, type));
   if (!category) throw new Error('组合区块必须包含已映射的分类类型');
