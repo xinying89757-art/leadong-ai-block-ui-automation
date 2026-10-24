@@ -859,10 +859,10 @@ export class LeadongEditor {
     // a confirmation dialog. Wait briefly for that observable result before
     // looking for a confirm control.
     const goneAfterClick = Date.now() + Math.min(1500, this.config.timeouts.actionMs);
-    while (Date.now() < goneAfterClick && await wrapper.count().catch(() => 0)) {
+    while (Date.now() < goneAfterClick && await wrapper.isVisible().catch(() => false)) {
       await this.page.waitForTimeout(100);
     }
-    if (!(await wrapper.count().catch(() => 0))) {
+    if (!(await wrapper.isVisible().catch(() => false))) {
       result.applied = true;
       return result;
     }
@@ -882,7 +882,7 @@ export class LeadongEditor {
     await confirm.click({ force: true });
     const gone = Date.now() + this.config.timeouts.actionMs;
     while (Date.now() < gone) {
-      if (!(await wrapper.count().catch(() => 0))) {
+      if (!(await wrapper.isVisible().catch(() => false))) {
         result.applied = true;
         return result;
       }
