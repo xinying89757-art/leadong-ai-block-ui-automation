@@ -96,6 +96,9 @@ test("复合区块页面与状态按 runId 隔离，恢复不会重复已提交�
   assert.equal(compositeResumeAction(state, config), "generate");
   state.types[0].generation_status = "succeeded";
   assert.throws(() => compositeResumeAction(state, config), /不能自动重复生成/);
+  state.types[0].generation_submit_confirmed = true;
+  assert.equal(compositeResumeAction(state, config), "resume-existing-record");
+  state.types[0].generation_submit_confirmed = false;
   state.types[0].generation_status = "uncertain";
   state.types[0].generation_submit_confirmed = true;
   assert.equal(compositeResumeAction(state, config), "resume-existing-record");

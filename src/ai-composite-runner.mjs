@@ -98,7 +98,7 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
 
   canResumeSubmittedGeneration(record) {
     return record?.type === this.config.ai.compositeRegression.type &&
-      record.generation_status === "uncertain" && record.generation_submit_confirmed === true &&
+      ["uncertain", "succeeded"].includes(record.generation_status) && record.generation_submit_confirmed === true &&
       record.apply_status !== "applied" && record.application_attempted !== true &&
       !record.application_commit_confirmed && !record.committed_block_id;
   }

@@ -103,7 +103,7 @@ export function compositeResumeAction(state, config) {
   const record = state?.types?.[0];
   if (!record) throw new Error("复合区块专项状态缺少唯一生成记录，拒绝恢复");
   if (record.application_attempted && record.apply_status !== "applied") throw new Error("复合区块应用状态不确定，需人工检查后再恢复");
-  if (record.generation_status === "uncertain" && record.generation_submit_confirmed === true &&
+  if (["uncertain", "succeeded"].includes(record.generation_status) && record.generation_submit_confirmed === true &&
       record.apply_status !== "applied" && !record.application_attempted && !record.application_commit_confirmed && !record.committed_block_id) {
     return "resume-existing-record";
   }
