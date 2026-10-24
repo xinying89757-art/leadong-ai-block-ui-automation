@@ -852,30 +852,31 @@ export class LeadongEditor {
     const result = { id, marker, applied: false };
     if (!apply) return result;
     await wrapper.hover({ force: true });
-    const remove = wrapper.locator(".ai-block-delete-btn.backstage-container-delete").first();
-    await remove.waitFor({ state: "visible", timeout: this.config.timeouts.actionMs });
+    const removeCandidates = wrapper.locator(".ai-block-delete-btn.backstage-container-delete");
+    let remove = null;
+    for (let index = 0; index < await removeCandidates.count(); index += 1) {
+      const candidate = removeCandidates.nth(index);
+      if (id && await candidate.getAttribute("data-id").catch(() => "") !== id) continue;
+      if (await candidate.isVisible().catch(() => false)) { remove = candidate; break; }
+    }
+    if (!remove) throw new Error(`区块删除按钮未匹配所有权 ID ${id || ""}`);
     await remove.click({ force: true });
-    // Some system-detail builds remove the block immediately and never show
-    // a confirmation dialog. Wait briefly for that observable result before
-    // looking for a confirm control.
-    const goneAfterClick = Date.now() + Math.min(1500, this.config.timeouts.actionMs);
-    while (Date.now() < goneAfterClick && await wrapper.isVisible().catch(() => false)) {
-      await this.page.waitForTimeout(100);
-    }
-    if (!(await wrapper.isVisible().catch(() => false))) {
-      result.applied = true;
-      return result;
-    }
     let confirm = null;
-    for (const scope of this.contexts()) {
-      const submit = scope.locator(".backstage-dialog-btns.backstage-dialog-submit")
-        .filter({ hasText: /^(确定|删除|确认)$/ }).first();
-      await submit.waitFor({ state: "visible", timeout: this.config.timeouts.actionMs }).catch(() => {});
-      const submitText = (await submit.innerText().catch(() => "")).replace(/\s+/g, " ").trim();
-      if (["确定", "删除", "确认"].includes(submitText) && await submit.isVisible().catch(() => false)) {
-        confirm = submit;
-        break;
+    const confirmDeadline = Date.now() + Math.min(this.config.timeouts.actionMs, 10000);
+    while (Date.now() < confirmDeadline) {
+      const exact = [];
+      for (const scope of this.contexts()) {
+        const submits = scope.locator(".backstage-dialog-btns.backstage-dialog-submit:visible")
+          .filter({ hasText: /^(确定|删除|确认)$/ });
+        for (let index = 0; index < await submits.count().catch(() => 0); index += 1) {
+          const candidate = submits.nth(index);
+          const text = (await candidate.innerText().catch(() => "")).replace(/\s+/g, " ").trim();
+          if (["确定", "删除", "确认"].includes(text) && await candidate.isVisible().catch(() => false)) exact.push(candidate);
+        }
       }
+      if (exact.length > 1) throw new Error(`删除 AI 区块确认按钮不唯一：${exact.length}`);
+      if (exact.length === 1) { confirm = exact[0]; break; }
+      await this.page.waitForTimeout(100);
     }
     if (!confirm) {
       const confirmCandidates = [];
@@ -892,7 +893,13 @@ export class LeadongEditor {
     await confirm.click({ force: true });
     const gone = Date.now() + this.config.timeouts.actionMs;
     while (Date.now() < gone) {
-      if (!(await wrapper.isVisible().catch(() => false))) {
+      const stillTopLevel = await frame.locator("#backstage-bodyArea").evaluate((area, ownedId) => {
+        const selectors = ".backstage-blocksEditor-wrap, .siteblocks-setting-wrap, .phoenix2-block-wrap, .block-container";
+        const found = [...area.querySelectorAll(selectors)].filter(node => node.getClientRects().length > 0);
+        return found.some(node => (node.id || node.getAttribute("data-px2-page-id") || node.getAttribute("data-id")) === ownedId &&
+          !node.parentElement?.closest(selectors));
+      }, id).catch(() => true);
+      if (!stillTopLevel) {
         result.applied = true;
         return result;
       }
