@@ -866,18 +866,28 @@ export class LeadongEditor {
       result.applied = true;
       return result;
     }
-    const confirmCandidates = [];
+    let confirm = null;
     for (const scope of this.contexts()) {
-      confirmCandidates.push(
-        scope.locator(".backstage-dialog-btns.backstage-dialog-submit:visible").filter({ hasText: /^(确定|删除|确认)$/ }),
-        scope.locator(".layui-layer-btn0:visible").last(),
-        scope.locator(".el-message-box__btns button:visible, .el-dialog__footer button:visible").filter({ hasText: /确定|删除|确认/ }).last(),
-        scope.getByRole("button", { name: /^(确定|删除|确认)$/ }).last(),
-        scope.getByText(/^确定$/, { exact: true }),
-        scope.getByText(/^删除$/, { exact: true }),
-      );
+      const submit = scope.locator(".backstage-dialog-btns.backstage-dialog-submit")
+        .filter({ hasText: /^(确定|删除|确认)$/ }).first();
+      await submit.waitFor({ state: "visible", timeout: this.config.timeouts.actionMs }).catch(() => {});
+      const submitText = (await submit.innerText().catch(() => "")).replace(/\s+/g, " ").trim();
+      if (["确定", "删除", "确认"].includes(submitText) && await submit.isVisible().catch(() => false)) {
+        confirm = submit;
+        break;
+      }
     }
-    const confirm = await firstVisible(confirmCandidates);
+    if (!confirm) {
+      const confirmCandidates = [];
+      for (const scope of this.contexts()) {
+        confirmCandidates.push(
+          scope.locator(".layui-layer-btn0:visible").last(),
+          scope.locator(".el-message-box__btns button:visible, .el-dialog__footer button:visible").filter({ hasText: /确定|删除|确认/ }).last(),
+          scope.getByRole("button", { name: /^(确定|删除|确认)$/ }).last(),
+        );
+      }
+      confirm = await firstVisible(confirmCandidates);
+    }
     if (!confirm) throw new Error("删除 AI 区块后未找到确认按钮，且区块未立即消失");
     await confirm.click({ force: true });
     const gone = Date.now() + this.config.timeouts.actionMs;
