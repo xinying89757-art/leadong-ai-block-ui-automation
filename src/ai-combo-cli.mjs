@@ -34,6 +34,7 @@ function scopedForCombo(config, runId, stateFile, comboKey, modeKey) {
   const mode = scoped.ai.generationModes.find(item => item.key === modeKey);
   if (!mode) throw new Error(`Unsupported generation mode: ${modeKey}`);
   scoped.ai.compositeRegression.generationMode = mode.label;
+  scoped.ai.generationMode = mode.label;
   scoped.ai.compositeRegression.dynamicTypes = [...dynamicTypes];
   scoped.ai.compositeRegression.maxGenerationAttempts = 3;
   const body = dynamicTypes.includes("文章列表")
@@ -89,15 +90,21 @@ async function main() {
         const beforeCleanup = await snapshotSystemPageBlocks(editor.canvasContexts());
         const baseline = current.page.system_page_snapshot;
         if (!baseline) throw new Error("Missing system page baseline snapshot; refusing cleanup");
-        const ownId = current.ownership?.identity?.id;
-        if (ownId && current.ownership.status !== "removed") {
+        let ownIdentity = current.ownership?.identity ?? null;
+        const ownId = ownIdentity?.id || (current.types?.[0]?.apply_status === "applied" ? current.types[0].committed_block_id : "");
+        if (ownId && current.ownership?.status !== "removed") {
           const wrappers = await editor.describeAiBlockWrappers();
           const matches = wrappers.filter(item => item.identity.id === ownId);
           if (matches.length > 1) throw new Error("Owned block identity is ambiguous; refusing cleanup");
           if (matches.length === 1) {
-            const result = await editor.deleteAiBlock({ identity: current.ownership.identity, apply: true });
+            ownIdentity ??= matches[0].identity;
+            current.ownership ??= { version: 1, site_name: config.siteName, site_language: config.siteLanguage,
+              system_page: current.page.name, system_page_id: identity.id, run_id: current.run_id,
+              type: "复合区块", identity: ownIdentity, status: "applied", recovered_from_committed_block_id: true };
+            const result = await editor.deleteAiBlock({ identity: ownIdentity, apply: true });
             if (!result.applied) throw new Error("Owned system-page block removal was not confirmed");
             await editor.savePage();
+            current.ownership.status = "removed";
           }
         }
         const after = await snapshotSystemPageBlocks(editor.canvasContexts());
@@ -130,7 +137,7 @@ async function main() {
   const started = Date.now(); let automation;
   try {
     const editor = new LeadongEditor(page, scoped); await editor.goto(); await editor.waitForCanvasReady();
-    automation = new AiComboSystemPageAutomation(editor, scoped, new AiStateStore(paths.state), 1, route.systemPage);
+    automation = new AiComboSystemPageAutomation(editor, scoped, new AiStateStore(paths.state), 1, route.systemPage, route.category);
     const originalPersist = automation.persist.bind(automation);
     automation.persist = async () => { await originalPersist(); automation.state.duration_ms = (current?.duration_ms ?? 0) + Date.now() - started; await persistReport(automation.state, paths); };
     const result = await automation.runUnpublished({ resume: command === "resume" });

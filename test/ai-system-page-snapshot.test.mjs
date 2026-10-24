@@ -10,8 +10,8 @@ test('system page restoration requires identical block IDs and order', () => {
 });
 
 test('mixed category combo routes to the first category system page', () => {
-  const mapping = { '产品分类': 'Product Category', '文章分类': 'News' };
-  assert.deepEqual(categorySystemPageFor(['产品列表', '产品分类', '文章分类'], mapping), { category: '产品分类', systemPage: 'Product Category' });
+  const mapping = { '产品分类': 'Products', '文章分类': 'News' };
+  assert.deepEqual(categorySystemPageFor(['产品列表', '产品分类', '文章分类'], mapping), { category: '产品分类', systemPage: 'Products' });
   assert.deepEqual(categorySystemPageFor(['文章分类', '产品分类'], mapping), { category: '文章分类', systemPage: 'News' });
   assert.throws(() => categorySystemPageFor(['产品列表'], mapping), /必须包含/);
 });

@@ -74,10 +74,11 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
     const current = result?.frame ?? frame;
     const mode = this.config.ai.generationModes.find(item => item.label === this.config.ai.compositeRegression.generationMode);
     if (!mode) throw new Error("组合区块生成模式未配置点数规则");
-    record.combo_points_after = await this.comboPoints.waitForCharge(current, record.combo_points_before, mode.expectedCost,
-      { timeoutMs: this.config.timeouts.blockRenderMs, intervalMs: 1000 });
+    // Derive the charge from the balance and cross-check it against the
+    // matching history badge. This preserves actual cost for safe resumes.
+    record.combo_points_after = await this.comboPoints.read(current);
     record.combo_points_charged = record.combo_points_before - record.combo_points_after;
-    if (record.combo_points_charged !== mode.expectedCost) throw new Error(`组合区块扣点不符：${record.combo_points_charged}，模式应扣 ${mode.expectedCost}`);
+    if (!Number.isInteger(record.combo_points_charged) || record.combo_points_charged <= 0) throw new Error(`组合区块扣点无效：${record.combo_points_charged}`);
     record.combo_history_after = Number((await current.locator(this.config.selectors.aiHistoryTriggerSelector).innerText()).match(/\d+\s*$/)?.[0]?.trim());
     if (record.combo_history_after !== record.combo_history_before + 1) throw new Error(`组合区块历史记录数异常：${record.combo_history_before} → ${record.combo_history_after}`);
     const cards = current.locator(this.config.selectors.aiHistoryCardSelector);
@@ -91,6 +92,7 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
     if (matches.length !== 1) throw new Error(`本轮组合区块生成记录匹配数 ${matches.length}，预期唯一`);
     record.combo_history_record = matches[0];
     if (matches[0].points !== record.combo_points_charged) throw new Error(`历史 points badge ${matches[0].points} 与余额扣点 ${record.combo_points_charged} 不符`);
+    record.combo_actual_mode = matches[0].mode;
     return result;
   }
 
@@ -121,11 +123,42 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
       if (matches.length === 1) {
         const { card, text } = matches[0];
         if (/组合操作失败，已保留可恢复进度/.test(text)) {
-          const error = new Error("AI 复合区块生成失败：本轮历史记录明确显示组合操作失败；准备发起新的独立生成");
-          error.code = "GENERATION_FAILED";
-          error.explicitPlatformFailure = true;
-          error.record_id = await card.getAttribute("data-id").catch(() => "") || await card.getAttribute("data-record-id").catch(() => "") || "";
-          throw error;
+          const continueButton = card.getByRole('button', { name: '继续生成', exact: true });
+          if (!await continueButton.isVisible().catch(() => false) || !await continueButton.isEnabled().catch(() => false)) {
+            const error = new Error("AI 复合区块存在可恢复失败，但未找到可用的继续生成按钮");
+            error.code = "GENERATION_FAILED"; error.explicitPlatformFailure = true;
+            error.record_id = await card.getAttribute("data-id").catch(() => "") || await card.getAttribute("data-record-id").catch(() => "") || "";
+            throw error;
+          }
+          record.continuation_attempts ??= [];
+          const maxContinuations = this.config.ai.compositeRegression.maxGenerationAttempts ?? 3;
+          if (record.continuation_attempts.length >= maxContinuations) {
+            const error = new Error(`继续生成已达到 ${maxContinuations} 次上限，保留失败记录供人工恢复`);
+            error.code = 'GENERATION_FAILED'; error.explicitPlatformFailure = true; throw error;
+          }
+          const continuation = { started_at: new Date().toISOString(), clicked: false, result_visible: false, terminal_status: '' };
+          record.continuation_attempts.push(continuation); await this.persist();
+          await continueButton.click(); continuation.clicked = true;
+          continuation.loading_observed = await continueButton.isDisabled().catch(() => false); await this.persist();
+          const deadline = Date.now() + (this.config.ai.compositeRegression.generationTimeoutMs ?? this.config.timeouts.blockRenderMs);
+          while (Date.now() < deadline) {
+            const result = frame.locator('button').filter({ hasText: /^应用(?:模块|区块)$/ }).first();
+            if (await result.isVisible().catch(() => false) && await result.isEnabled().catch(() => false)) {
+              continuation.result_visible = true; continuation.terminal_status = 'result-visible'; continuation.finished_at = new Date().toISOString();
+              await this.persist(); return frame;
+            }
+            const currentText = (await card.innerText().catch(() => '')).replace(/\s+/g, ' ');
+            const disabled = await continueButton.isDisabled().catch(() => false);
+            if (disabled) continuation.loading_observed = true;
+            if (continuation.loading_observed && !disabled && /组合操作失败，已保留可恢复进度/.test(currentText)) {
+              continuation.terminal_status = 'failed-again'; continuation.finished_at = new Date().toISOString(); await this.persist();
+              const error = new Error('继续生成后仍返回组合操作失败'); error.code = 'GENERATION_FAILED'; error.explicitPlatformFailure = true;
+              error.record_id = await card.getAttribute('data-id').catch(() => '') || ''; throw error;
+            }
+            await this.editor.page.waitForTimeout(500);
+          }
+          continuation.terminal_status = 'uncertain'; continuation.finished_at = new Date().toISOString(); await this.persist();
+          const error = new Error('组合区块继续生成等待超时，拒绝重复提交'); error.code = 'GENERATION_UNCONFIRMED'; throw error;
         }
         return frame;
       }

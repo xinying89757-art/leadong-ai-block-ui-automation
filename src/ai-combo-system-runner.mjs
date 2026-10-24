@@ -4,9 +4,10 @@ import { aiPageDescriptor } from './config.mjs';
 import { snapshotSystemPageBlocks, assertSystemPageRestored } from './ai-system-page-snapshot.mjs';
 
 export class AiComboSystemPageAutomation extends AiCompositeRegressionAutomation {
-  constructor(editor, config, store, pageNumber = 1, systemPage) {
+  constructor(editor, config, store, pageNumber = 1, systemPage, categoryType = '') {
     super(editor, config, store, pageNumber);
     this.systemPage = systemPage;
+    this.categoryType = categoryType;
   }
 
   async initialize({ resume = false } = {}) {
@@ -33,6 +34,7 @@ export class AiComboSystemPageAutomation extends AiCompositeRegressionAutomation
       this.state.page.page_type = 'system';
     }
     this.page = this.state.page;
+    this.page.category_routing = { category: this.categoryType, system_page: this.systemPage, rule: 'first category type in combo order' };
     this.state.status = 'running'; this.page.failure_reason = '';
     await this.persist();
     const record = this.state.types[0];
@@ -47,8 +49,12 @@ export class AiComboSystemPageAutomation extends AiCompositeRegressionAutomation
     await super.afterFinalApply(context);
     const record = context.record;
     const candidates = (await this.editor.describeAiBlockWrappers()).filter(item => item.identity.id === record.committed_block_id);
-    if (candidates.length !== 1) throw new Error('新插入的系统页组合区块没有唯一稳定身份');
-    const identity = candidates[0].identity;
+    if (candidates.length > 1) throw new Error('新插入的系统页组合区块稳定身份重复');
+    // The commit observer's ID is the wrapper identity on some editor builds;
+    // describeAiBlockWrappers can lag until the canvas reloads. The committed
+    // ID is run-owned evidence and remains the deletion key in that case.
+    const identity = candidates[0]?.identity ?? { id: record.committed_block_id };
+    if (!identity.id) throw new Error('新插入的系统页组合区块没有稳定身份');
     this.state.ownership = { version: 1, site_name: this.config.siteName, site_language: this.config.siteLanguage,
       system_page: this.systemPage, system_page_id: this.page.target_identity.id, run_id: this.state.run_id,
       type: '复合区块', identity, status: 'applied', created_at: new Date().toISOString() };
@@ -67,6 +73,7 @@ export class AiComboSystemPageAutomation extends AiCompositeRegressionAutomation
       if (identity.name !== this.systemPage || identity.id !== this.page.target_identity.id) throw new Error('保存后系统页身份变化');
       if (!await this.verifyEditorType(record.type)) throw new Error('保存并重开后组合区块缺失');
       record.combo_reopen_verified = true;
+      record.editor_verified = true; state.page.editor_verified = true;
       const evidence = { checked_types: [], matches: {} };
       for (const type of this.config.ai.compositeRegression.dynamicTypes) {
         const needle = type === '产品列表' ? /product|goods/i : type === '产品分类' ? /product.?categor|categor(y|ies)|classif/i
