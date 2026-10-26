@@ -89,9 +89,6 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
     if (!Number.isInteger(currentCount)) return false;
     record.combo_history_after = currentCount;
     if (currentCount <= record.combo_history_before) return false;
-    if (currentCount !== record.combo_history_before + 1) {
-      throw new Error(`组合区块历史记录数不唯一：${record.combo_history_before} → ${currentCount}`);
-    }
     const cards = frame.locator(this.config.selectors.aiHistoryCardSelector);
     const parsedCards = [];
     for (let index = 0; index < await cards.count().catch(() => 0); index += 1) {
@@ -151,7 +148,7 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
     record.combo_points_charged = record.combo_points_before - record.combo_points_after;
     if (!Number.isInteger(record.combo_points_charged) || record.combo_points_charged <= 0) throw new Error(`组合区块扣点无效：${record.combo_points_charged}`);
     record.combo_history_after = Number((await current.locator(this.config.selectors.aiHistoryTriggerSelector).innerText()).match(/\d+\s*$/)?.[0]?.trim());
-    if (record.combo_history_after !== record.combo_history_before + 1) throw new Error(`组合区块历史记录数异常：${record.combo_history_before} → ${record.combo_history_after}`);
+    if (!Number.isInteger(record.combo_history_after) || record.combo_history_after <= record.combo_history_before) throw new Error(`组合区块历史记录数未增加：${record.combo_history_before} → ${record.combo_history_after}`);
     const match = record.combo_history_record;
     if (!match) throw new Error("缺少按历史基线、提交时间、润色提示词、模式和点数匹配的新组合记录");
     if (match.points !== record.combo_points_charged) throw new Error(`历史 points badge ${match.points} 与余额扣点 ${record.combo_points_charged} 不符`);

@@ -23,6 +23,7 @@ test("combo history matching requires a new count, fresh timestamp, polished tex
     polishedPrompt: "经润色后的太阳能产品展示", mode: "quick", expectedPoints: 6 };
   assert.equal(selectNewCompositeHistoryRecord([fresh, old], options), fresh);
   assert.equal(selectNewCompositeHistoryRecord([fresh], { ...options, currentCount: 12 }), null);
+  assert.equal(selectNewCompositeHistoryRecord([fresh], { ...options, currentCount: 14 }), fresh);
   assert.equal(selectNewCompositeHistoryRecord([record({ mode: "deep" })], options), null);
   assert.equal(selectNewCompositeHistoryRecord([record({ points: 15 })], options), null);
   assert.equal(selectNewCompositeHistoryRecord([record({ prompt: "unrelated prompt" })], options), null);

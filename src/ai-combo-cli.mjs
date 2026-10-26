@@ -7,9 +7,10 @@ import { AiComboSystemPageAutomation } from "./ai-combo-system-runner.mjs";
 import { AiStateStore } from "./ai-state.mjs";
 import { parseCliArgs } from "./cli-args.mjs";
 import { compositePaths, compositeScopedConfig, readCompositeJson, writeCompositeJson } from "./ai-composite-state.mjs";
-import { compositeSelectionValid } from "./ai-composite-runner.mjs";
+import { AiCompositeRegressionAutomation, compositeSelectionValid } from "./ai-composite-runner.mjs";
 import { categorySystemPageFor, snapshotSystemPageBlocks, assertSystemPageRestored } from "./ai-system-page-snapshot.mjs";
 import { comboDefinition, comboKeys } from "./ai-combo-prompt.mjs";
+import { parseGenerationHistoryRecord } from "./ai-history-state.mjs";
 
 const combos = Object.fromEntries(comboKeys.map(key => [key, comboDefinition(key).types]));
 function reportPath(runId) { return path.resolve("reports", "ai-combo", runId); }
@@ -51,8 +52,8 @@ function checkState(state, config, runId, comboKey) {
 async function main() {
   const args = parseCliArgs(process.argv.slice(2));
   const command = args._[0] ?? "status";
-  if (!["run", "resume", "status", "cleanup"].includes(command)) throw new Error("Unknown ai:combo command");
-  if (command !== "status" && args.apply !== true) throw new Error(`${command} requires --apply`);
+  if (!["run", "resume", "status", "cleanup", "inspect"].includes(command)) throw new Error("Unknown ai:combo command");
+  if (command !== "status" && command !== "inspect" && args.apply !== true) throw new Error(`${command} requires --apply`);
   const comboKey = args.combo ?? "product_pair";
   if (!combos[comboKey]) throw new Error("combo must be product_pair, article_pair, or three_type");
   const config = await loadConfig(args.config ?? "config/run.json");
@@ -72,6 +73,46 @@ async function main() {
       durationMs: current.duration_ms, page: current.page.name, points: current.types[0].combo_points_charged,
       pageType: current.page.page_type ?? "custom", systemPage: current.page.page_type === "system" ? current.page.name : undefined,
       restored: current.page.restored ?? false, report: reportPath(runId) }, null, 2)); return;
+  }
+  if (command === "inspect") {
+    if (!current) throw new Error("No combo state"); checkState(current, config, runId, comboKey);
+    if (current.page.page_type !== "system") throw new Error("Read-only history inspection requires a system-page combo run");
+    const scoped = scopedForCombo(config, runId, paths.state, comboKey, modeKey);
+    const { context, page } = await launchEditorBrowser(scoped, { headless: true, isolatedProfile: false });
+    try {
+      const editor = new LeadongEditor(page, scoped); await editor.goto(); await editor.waitForCanvasReady();
+      await editor.openSystemPage(current.page.name);
+      const identity = await editor.currentPageIdentity();
+      if (identity.name !== current.page.name || identity.id !== current.page.target_identity?.id) throw new Error("System page identity mismatch; refusing inspection");
+      const before = await snapshotSystemPageBlocks(editor.canvasContexts());
+      const automation = new AiCompositeRegressionAutomation(editor, scoped, new AiStateStore(paths.state), 1);
+      const frame = await automation.openAiDialog();
+      const cards = frame.locator(scoped.selectors.aiHistoryCardSelector);
+      const trigger = frame.locator(scoped.selectors.aiHistoryTriggerSelector).first();
+      if (!await cards.first().isVisible().catch(() => false) && await trigger.isVisible().catch(() => false)) await trigger.click();
+      await page.waitForTimeout(1000);
+      const expected = String(current.types?.[0]?.polished_prompt || current.types?.[0]?.generation_prompt || "").replace(/\s+/g, " ").trim();
+      const matches = [];
+      for (let index = 0; index < await cards.count().catch(() => 0); index += 1) {
+        const card = cards.nth(index); const text = await card.innerText().catch(() => "");
+        if (expected && !text.replace(/\s+/g, " ").includes(expected)) continue;
+        let parsed = null;
+        try { parsed = parseGenerationHistoryRecord(text, await card.getAttribute("data-id").catch(() => "") || await card.getAttribute("data-record-id").catch(() => "")); } catch { /* Retain unparsed visible text for diagnosis. */ }
+        matches.push({ parsed, visible_text: text });
+      }
+      const after = await snapshotSystemPageBlocks(editor.canvasContexts()); assertSystemPageRestored(before, after);
+      const observation = { run_id: runId, combo: comboKey, inspected_at: new Date().toISOString(), page: identity.name,
+        page_snapshot_before: before, page_snapshot_after: after, history_count: await trigger.innerText().catch(() => ""),
+        points_balance: await automation.comboPoints.read(frame).catch(() => null), expected_prompt: expected, matching_records: matches };
+      const dir = reportPath(runId); await mkdir(dir, { recursive: true });
+      const { writeFile } = await import("node:fs/promises");
+      await writeFile(path.join(dir, "history-observation.json"), JSON.stringify(observation, null, 2));
+      console.log(JSON.stringify({ runId, matchingRecordCount: matches.length,
+        records: matches.map(item => ({ status: item.parsed?.status ?? "unparsed", mode: item.parsed?.mode ?? null,
+          points: item.parsed?.points ?? null, timestamp: item.parsed?.timestamp ?? null, text: item.visible_text })),
+        pointsBalance: observation.points_balance, snapshotRestored: true, evidence: path.join(dir, "history-observation.json") }, null, 2));
+    } finally { await context.close(); }
+    return;
   }
   if (command === "cleanup") {
     if (!current) throw new Error("No combo state"); checkState(current, config, runId, comboKey);

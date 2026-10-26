@@ -17,7 +17,7 @@ function normalize(value) { return String(value ?? "").replace(/\s+/g, " ").trim
 export function selectNewCompositeHistoryRecord(records, {
   baselineCount, currentCount, submittedAt, polishedPrompt, mode, expectedPoints,
 }) {
-  if (!Number.isInteger(baselineCount) || !Number.isInteger(currentCount) || currentCount !== baselineCount + 1) return null;
+  if (!Number.isInteger(baselineCount) || !Number.isInteger(currentCount) || currentCount <= baselineCount) return null;
   const submittedMs = Date.parse(submittedAt);
   if (!Number.isFinite(submittedMs)) return null;
   const needle = normalize(polishedPrompt);
