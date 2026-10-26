@@ -35,6 +35,14 @@ export function canContinueCompositeHistory(record, maxContinuations = 1) {
   return Number.isInteger(maxContinuations) && maxContinuations >= 0 && used < maxContinuations;
 }
 
+export function compositeHistoryRecordMatches(parsed, record, mode, expectedPoints) {
+  const normalize = value => String(value ?? "").replace(/\s+/g, " ").trim();
+  const expectedPrompt = normalize(record?.polished_prompt || record?.generation_prompt);
+  return Boolean(parsed && record && expectedPrompt && parsed.status === "completed" &&
+    String(parsed.block_type ?? "").includes("组合区块") && parsed.mode === mode && parsed.points === expectedPoints &&
+    parsed.timestamp === record.combo_history_record?.timestamp && normalize(parsed.prompt).includes(expectedPrompt));
+}
+
 export function prepareCompositeGenerationRetry(record, error, now = new Date()) {
   const attemptNumber = Number(record.generation_attempt_number || 1);
   record.generation_attempts ??= [];
@@ -74,6 +82,35 @@ export function prepareCompositeGenerationRetry(record, error, now = new Date())
 
 export class AiCompositeRegressionAutomation extends AiPagedAutomation {
   constructor(...args) { super(...args); this.comboPoints = new AiDialogPointsReader(this.config); }
+
+  async historyRecord(frame, record) {
+    const history = frame.locator(this.config.selectors.aiHistoryTriggerSelector).first();
+    const cards = frame.locator(this.config.selectors.aiHistoryCardSelector);
+    if (!await cards.first().isVisible().catch(() => false) && await history.isVisible().catch(() => false)) await history.click();
+    const mode = this.config.ai.generationModes.find(item => item.label === record.generation_mode);
+    if (!mode) throw new Error(`复合区块历史记录没有配置模式：${record.generation_mode}`);
+    const deadline = Date.now() + this.config.timeouts.blockRenderMs;
+    while (Date.now() < deadline) {
+      const matches = [];
+      for (let index = 0; index < await cards.count().catch(() => 0); index += 1) {
+        const card = cards.nth(index); const text = await card.innerText().catch(() => "");
+        let parsed = null;
+        try { parsed = parseGenerationHistoryRecord(text,
+          await card.getAttribute("data-id").catch(() => "") || await card.getAttribute("data-record-id").catch(() => "")); } catch { /* Ignore incomplete cards. */ }
+        if (!compositeHistoryRecordMatches(parsed, record, mode.key, mode.expectedCost)) continue;
+        const insert = await firstVisible([
+          card.locator(this.config.selectors.aiHistoryInsertSelector).first(),
+          card.getByRole("button", { name: /插入/ }).first(),
+          card.getByText(/插入/).first(),
+        ]);
+        if (insert) matches.push({ card, text, insert, id: parsed.id || "" });
+      }
+      if (matches.length === 1) return matches[0];
+      if (matches.length > 1) throw new Error("复合区块历史记录时间戳匹配重复，拒绝插入歧义记录");
+      await this.editor.page.waitForTimeout(250);
+    }
+    throw new Error("未找到与本轮时间戳/提示词/模式/点数匹配的组合区块历史记录");
+  }
 
   async submitBlockGeneration(frame, generate, prompt, record) {
     record.combo_points_before = await this.comboPoints.read(frame);
@@ -254,6 +291,18 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
   }
 
   async generateAndApply(record) {
+    if (record.generation_status === "succeeded" && record.combo_history_record?.status === "completed" &&
+        record.apply_status !== "applied" && record.application_attempted !== true && !record.committed_block_id) {
+      const attempt = record.generation_attempts?.find(item => item.attempt === Number(record.generation_attempt_number || 1));
+      await this.recoverStandardGeneratedResult(record);
+      if (attempt) Object.assign(attempt, { status: "succeeded", failure_reason: "", explicit_platform_failure: false,
+        finished_at: new Date().toISOString(), generation_record_id: record.generation_record_id || "",
+        application_source: "history" });
+      record.final_generation_attempt = Number(record.generation_attempt_number || 1);
+      record.generation_status = "succeeded";
+      await this.persist();
+      return;
+    }
     const maxAttempts = this.config.ai.compositeRegression.maxGenerationAttempts;
     record.generation_attempt_number = Number(record.generation_attempt_number || 1);
     record.generation_attempts ??= [];

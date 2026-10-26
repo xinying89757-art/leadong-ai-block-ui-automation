@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { aiPageDescriptor, loadConfig, validateCompositeRegression } from "../src/config.mjs";
 import { createInitialAiState } from "../src/ai-state.mjs";
-import { canContinueCompositeHistory, canRetryCompositeGeneration, compositeSelectionValid, prepareCompositeGenerationRetry } from "../src/ai-composite-runner.mjs";
+import { canContinueCompositeHistory, canRetryCompositeGeneration, compositeHistoryRecordMatches, compositeSelectionValid, prepareCompositeGenerationRetry } from "../src/ai-composite-runner.mjs";
 import {
   assertCompositeState,
   assertComboPairCostConsistency,
@@ -89,6 +89,14 @@ test("combo resume allows at most one same-record Continue", () => {
   assert.equal(canContinueCompositeHistory({}, 1), true);
   assert.equal(canContinueCompositeHistory({ continuation_attempts: [{}] }, 1), false);
   assert.equal(canContinueCompositeHistory({ continuation_attempts: [{}, {}] }, 1), false);
+});
+
+test("combo history recovery matches the platform's 组合区块 label and exact timestamp", () => {
+  const record = { polished_prompt: "润色后的组合提示词", combo_history_record: { timestamp: "2026-10-26 09:20:02" } };
+  const parsed = { status: "completed", block_type: "组合区块：产品列表、产品分类", mode: "quick", points: 6,
+    timestamp: record.combo_history_record.timestamp, prompt: "润色后的组合提示词" };
+  assert.equal(compositeHistoryRecordMatches(parsed, record, "quick", 6), true);
+  assert.equal(compositeHistoryRecordMatches({ ...parsed, timestamp: "2026-10-26 09:42:50" }, record, "quick", 6), false);
 });
 
 test("复合区块选择状态要求静态默认、组合开关和恰好指定的动态项", () => {
