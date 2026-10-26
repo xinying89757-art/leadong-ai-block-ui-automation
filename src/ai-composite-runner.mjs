@@ -30,6 +30,11 @@ export function canRetryCompositeGeneration(error, attemptNumber, maxAttempts) {
     Number.isInteger(attemptNumber) && Number.isInteger(maxAttempts) && attemptNumber < maxAttempts;
 }
 
+export function canContinueCompositeHistory(record, maxContinuations = 1) {
+  const used = Array.isArray(record?.continuation_attempts) ? record.continuation_attempts.length : 0;
+  return Number.isInteger(maxContinuations) && maxContinuations >= 0 && used < maxContinuations;
+}
+
 export function prepareCompositeGenerationRetry(record, error, now = new Date()) {
   const attemptNumber = Number(record.generation_attempt_number || 1);
   record.generation_attempts ??= [];
@@ -189,8 +194,8 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
             throw error;
           }
           record.continuation_attempts ??= [];
-          const maxContinuations = this.config.ai.compositeRegression.maxGenerationAttempts ?? 3;
-          if (record.continuation_attempts.length >= maxContinuations) {
+          const maxContinuations = this.config.ai.compositeRegression.maxContinuations ?? 1;
+          if (!canContinueCompositeHistory(record, maxContinuations)) {
             const error = new Error(`继续生成已达到 ${maxContinuations} 次上限，保留失败记录供人工恢复`);
             error.code = 'GENERATION_FAILED'; error.explicitPlatformFailure = true; throw error;
           }

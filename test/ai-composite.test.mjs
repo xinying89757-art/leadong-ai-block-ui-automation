@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { aiPageDescriptor, loadConfig, validateCompositeRegression } from "../src/config.mjs";
 import { createInitialAiState } from "../src/ai-state.mjs";
-import { canRetryCompositeGeneration, compositeSelectionValid, prepareCompositeGenerationRetry } from "../src/ai-composite-runner.mjs";
+import { canContinueCompositeHistory, canRetryCompositeGeneration, compositeSelectionValid, prepareCompositeGenerationRetry } from "../src/ai-composite-runner.mjs";
 import {
   assertCompositeState,
   assertComboPairCostConsistency,
@@ -71,6 +71,12 @@ test("复合区块只有平台明确失败才新建生成尝试，超时不重�
   assert.equal(record.generation_submit_confirmed, false);
   assert.equal(record.generation_record_id, "");
   assert.equal(record.application_attempted, false);
+});
+
+test("combo resume allows at most one same-record Continue", () => {
+  assert.equal(canContinueCompositeHistory({}, 1), true);
+  assert.equal(canContinueCompositeHistory({ continuation_attempts: [{}] }, 1), false);
+  assert.equal(canContinueCompositeHistory({ continuation_attempts: [{}, {}] }, 1), false);
 });
 
 test("复合区块选择状态要求静态默认、组合开关和恰好指定的动态项", () => {

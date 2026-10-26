@@ -34,6 +34,7 @@ function scopedForCombo(config, runId, stateFile, comboKey, modeKey) {
   scoped.ai.generationMode = mode.label;
   scoped.ai.compositeRegression.dynamicTypes = [...dynamicTypes];
   scoped.ai.compositeRegression.maxGenerationAttempts = 3;
+  scoped.ai.compositeRegression.maxContinuations = 1;
   scoped.ai.suppressPromptRunMarker = true;
   scoped.ai.prompts["复合区块"] = comboDefinition(comboKey).prompt;
   return scoped;
