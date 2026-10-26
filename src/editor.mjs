@@ -21,6 +21,11 @@ export function isLanguageOptionSelected({ className = "", ariaSelected = "" } =
   return String(className).split(/\s+/).includes("on") || String(ariaSelected).toLowerCase() === "true";
 }
 
+export function isAiBlockDeleteConfirmLabel(value) {
+  return new Set(["确定", "删除", "确认", "Delete", "Confirm", "OK", "Yes", "Remove"])
+    .has(String(value ?? "").replace(/\s+/g, " ").trim());
+}
+
 function escapeCssAttributeValue(value) {
   return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("'", "\\'");
 }
@@ -866,12 +871,11 @@ export class LeadongEditor {
     while (Date.now() < confirmDeadline) {
       const exact = [];
       for (const scope of this.contexts()) {
-        const submits = scope.locator(".backstage-dialog-btns.backstage-dialog-submit:visible")
-          .filter({ hasText: /^(确定|删除|确认)$/ });
+        const submits = scope.locator(".backstage-dialog-btns.backstage-dialog-submit:visible");
         for (let index = 0; index < await submits.count().catch(() => 0); index += 1) {
           const candidate = submits.nth(index);
           const text = (await candidate.innerText().catch(() => "")).replace(/\s+/g, " ").trim();
-          if (["确定", "删除", "确认"].includes(text) && await candidate.isVisible().catch(() => false)) exact.push(candidate);
+          if (isAiBlockDeleteConfirmLabel(text) && await candidate.isVisible().catch(() => false)) exact.push(candidate);
         }
       }
       if (exact.length > 1) throw new Error(`删除 AI 区块确认按钮不唯一：${exact.length}`);
@@ -883,8 +887,8 @@ export class LeadongEditor {
       for (const scope of this.contexts()) {
         confirmCandidates.push(
           scope.locator(".layui-layer-btn0:visible").last(),
-          scope.locator(".el-message-box__btns button:visible, .el-dialog__footer button:visible").filter({ hasText: /确定|删除|确认/ }).last(),
-          scope.getByRole("button", { name: /^(确定|删除|确认)$/ }).last(),
+          scope.locator(".el-message-box__btns button:visible, .el-dialog__footer button:visible").filter({ hasText: /确定|删除|确认|Delete|Confirm|OK|Yes|Remove/ }).last(),
+          scope.getByRole("button", { name: /^(确定|删除|确认|Delete|Confirm|OK|Yes|Remove)$/ }).last(),
         );
       }
       confirm = await firstVisible(confirmCandidates);
