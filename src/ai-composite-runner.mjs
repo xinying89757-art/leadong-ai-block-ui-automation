@@ -138,7 +138,8 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
   }
 
   async waitForGeneration(frame, prompt, historyCountBefore, timeoutMs, record) {
-    const result = await super.waitForGeneration(frame, prompt, historyCountBefore, timeoutMs, record);
+    const result = this.resumeHistoryResult ?? await super.waitForGeneration(frame, prompt, historyCountBefore, timeoutMs, record);
+    this.resumeHistoryResult = null;
     const current = result?.frame ?? frame;
     const mode = this.config.ai.generationModes.find(item => item.label === this.config.ai.compositeRegression.generationMode);
     if (!mode) throw new Error("组合区块生成模式未配置点数规则");
@@ -185,6 +186,26 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
       }
       if (matches.length === 1) {
         const { card, text } = matches[0];
+        let parsed = null;
+        try { parsed = parseGenerationHistoryRecord(text,
+          await card.getAttribute("data-id").catch(() => "") || await card.getAttribute("data-record-id").catch(() => "")); } catch { /* Keep polling incomplete cards. */ }
+        if (parsed?.status === "completed") {
+          const mode = this.config.ai.generationModes.find(item => item.label === record.generation_mode);
+          const submitted = Date.parse(record.generation_submitted_at);
+          const polished = String(record.polished_prompt || "").replace(/\s+/g, " ").trim();
+          if (!mode || !Number.isFinite(submitted) || parsed.epoch_ms < submitted - 60_000 ||
+              !String(parsed.block_type).includes("组合区块") || parsed.mode !== mode.key || parsed.points !== mode.expectedCost ||
+              !String(parsed.prompt).replace(/\s+/g, " ").includes(polished)) throw new Error("恢复到的完成历史记录与本轮提示词/模式/成本不符");
+          const insert = await firstVisible([
+            card.getByText(/插入|应用模块/),
+            card.locator("button").filter({ hasText: /插入|应用模块/ }),
+          ]);
+          if (insert && await insert.isEnabled().catch(() => false)) {
+            record.combo_history_record = parsed; record.generation_record_id = parsed.id || "";
+            record.last_record_status = parsed.status; this.resumeHistoryResult = { mode: "history", frame, control: insert, recordId: parsed.id || "" };
+            await this.persist(); return frame;
+          }
+        }
         if (/组合操作失败，已保留可恢复进度/.test(text)) {
           const continueButton = card.getByRole('button', { name: '继续生成', exact: true });
           if (!await continueButton.isVisible().catch(() => false) || !await continueButton.isEnabled().catch(() => false)) {
