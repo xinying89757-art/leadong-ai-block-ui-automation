@@ -194,7 +194,20 @@ npm run ai:combo:resume -- --combo product_pair --mode quick --run-id combo-prod
 npm run ai:combo:cleanup -- --combo product_pair --run-id combo-product-local-01
 ```
 
-`ai:combo` 的 `--combo` 可选 `product_pair`、`article_pair`、`three_type`，`--mode` 可选 `quick`、`advanced`、`deep`。含分类的组合在对应系统页面运行：产品组合/产品分类使用 `Products`，文章分类使用 `News`；视频、图册、下载和 FAQ 分类使用配置中各自对应的系统页。系统页流程先记录区块 ID 和顺序快照，完成后只移除本次凭据确认的自有区块，保存、重载并核对页面恢复到快照；cleanup 同样只移除自有区块，绝不删除系统页或既有内容。其他四个流程使用各自归属的自定义测试页。
+`ai:combo` 的 `--combo` 可选 `product_pair`、`article_pair`、`three_type`、`video_pair`、`gallery_pair`、`download_pair`、`faq_pair`，`--mode` 可选 `quick`、`advanced`、`deep`。含分类的组合在对应系统页面运行：产品组合/产品分类使用 `Products`，文章分类使用 `News`；视频、图册、下载和 FAQ 分类使用配置中各自对应的系统页。系统页流程先记录区块 ID 和顺序快照，完成后只移除本次凭据确认的自有区块，保存、重载并核对页面恢复到快照；cleanup 同样只移除自有区块，绝不删除系统页或既有内容。其他四个流程使用各自归属的自定义测试页。
+
+提示词只写组合名称（如“视频列表和视频分类”），先点“润色”再以快速模式生成。新增四组：`video_pair`（视频列表+视频分类，`Video List` 系统页）、`gallery_pair`（图册列表+图册分类，`Gallery`）、`download_pair`（下载列表+下载分类，`Download`）、`faq_pair`（FAQ 列表+FAQ 分类，`FAQ`）。组合生成常超过 10 分钟，组合流程等待上限为 20 分钟；若到达上限时平台仍显示生成中，可用 `:resume` 读取历史记录：已完成则直接插入并校验（不重新生成），平台「组合操作失败」则最多点 1 次“继续生成”。可用 `node src/ai-combo-cli.mjs inspect --combo <id> --run-id <runId>` 只读查看该轮历史记录和页面快照。
+
+Phase H（2026-10-26，各跑 2 次，快速模式）结果：
+
+| 组合 | 系统页 | 通过/运行 | 「组合操作失败」 | 备注 |
+|---|---|---|---|---|
+| video_pair | Video List | 1/2 | 1 | H-02 生成完成后因 AI 弹窗加载遮罩卡住（测试侧，已修复），resume 后通过 |
+| gallery_pair | Gallery | 0/2 | 2 | 均为平台失败，0 点 |
+| download_pair | Download | 1/2 | 1 | H-02 生成超过 20 分钟，resume 后通过 |
+| faq_pair | FAQ | 1/2 | 1 | H-02 生成超过 20 分钟，resume 后通过 |
+
+所有运行结束后四个系统页区块快照与运行前一致（均为空）。运行报告写入本地 `reports/ai-combo/<runId>/`（不入库）。
 
 `run`、`resume` 和 `cleanup` 需要 `--apply`；run/resume 的 npm 脚本已包含该开关，cleanup 命令也已包含。查看本地断点可执行对应 `:status`；中断后用相同 run ID 调用 `:resume`。可使用 `npm test` 运行离线测试。
 
