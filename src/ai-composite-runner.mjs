@@ -291,6 +291,15 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
   }
 
   async generateAndApply(record) {
+    if (record.generation_status === "uncertain" && record.generation_submit_confirmed === true &&
+        record.apply_status !== "applied" && record.application_attempted !== true && !record.committed_block_id) {
+      await this.resumeSubmittedGeneration(record);
+      if (this.resumeHistoryResult && record.combo_history_record?.status === "completed") {
+        record.generation_status = "succeeded";
+        await this.persist();
+        return this.generateAndApply(record);
+      }
+    }
     if (record.generation_status === "succeeded" && record.combo_history_record?.status === "completed" &&
         record.apply_status !== "applied" && record.application_attempted !== true && !record.committed_block_id) {
       const attempt = record.generation_attempts?.find(item => item.attempt === Number(record.generation_attempt_number || 1));
