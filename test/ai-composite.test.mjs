@@ -117,6 +117,18 @@ test("复合区块页面与状态按 runId 隔离，恢复不会重复已提交�
   assert.equal(newCompositeRunId(new Date("2026-10-20T01:02:03.000Z")), "composite-20261020010203");
 });
 
+test("combo prompt suppression keeps run IDs out of both state prompt fields", async () => {
+  const config = await loadConfig("config/run.json");
+  const runId = "combo-prompt-unit-001";
+  const paths = compositePaths(config, runId);
+  const scoped = compositeScopedConfig(config, runId, paths.state);
+  scoped.ai.suppressPromptRunMarker = true;
+  scoped.ai.prompts["复合区块"] = "产品列表和产品分类";
+  const state = createInitialAiState(scoped, aiPageDescriptor(scoped, 1));
+  assert.equal(state.types[0].original_prompt, "产品列表和产品分类");
+  assert.equal(state.types[0].prompt, "产品列表和产品分类");
+});
+
 test("复合区块闭环必须逐项确认菜单、应用、编辑器、预览和公开发布", async () => {
   const config = await loadConfig("config/run.json");
   const runId = "composite-pass-001";

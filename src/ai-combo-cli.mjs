@@ -9,16 +9,13 @@ import { parseCliArgs } from "./cli-args.mjs";
 import { compositePaths, compositeScopedConfig, readCompositeJson, writeCompositeJson } from "./ai-composite-state.mjs";
 import { compositeSelectionValid } from "./ai-composite-runner.mjs";
 import { categorySystemPageFor, snapshotSystemPageBlocks, assertSystemPageRestored } from "./ai-system-page-snapshot.mjs";
+import { comboDefinition, comboKeys } from "./ai-combo-prompt.mjs";
 
-const combos = {
-  product_pair: ["产品列表", "产品分类"],
-  article_pair: ["文章列表", "文章分类"],
-  three_type: ["产品列表", "产品分类", "文章列表"],
-};
+const combos = Object.fromEntries(comboKeys.map(key => [key, comboDefinition(key).types]));
 function reportPath(runId) { return path.resolve("reports", "ai-combo", runId); }
 function render(state) {
   const record = state.types?.[0] ?? {};
-  return `# AI combo: ${state.run_id}\n\nAssertions: ${state.combo_assertions_status ?? "FAIL"}\n\nPreview: ${state.combo_preview_status ?? "not-applicable"}\n\nOverall: ${state.combo_overall ?? "FAIL"}\n\nDuration: ${state.duration_ms ?? "running"} ms\n\nPage: ${state.page?.name ?? ""} (${state.page?.page_type ?? "custom"})\n\nCategory routing: ${JSON.stringify(state.page?.category_routing ?? null)}\n\nSystem page restored: ${state.page?.restored === true ? "PASS" : state.page?.page_type === "system" ? "pending/FAIL" : "not-applicable"}\n\nSelection: ${JSON.stringify(record.composite_selection ?? null)}\n\nGeneration: ${record.generation_status}; attempts: ${JSON.stringify(record.generation_attempts ?? [])}\n\nPoints: ${record.combo_points_before ?? "?"} → ${record.combo_points_after ?? "?"} (${record.combo_points_charged ?? "?"}); history badge: ${record.combo_history_before ?? "?"} → ${record.combo_history_after ?? "?"}; usage badge: ${record.combo_history_record?.points ?? "?"}\n\nSub-block DOM: ${JSON.stringify(record.combo_subblock_dom ?? null)}\n\nSave/reopen: ${record.combo_reopen_verified === true ? "PASS" : "pending"}\n\nPublishing: not performed.\n\nFailure: ${state.page?.failure_reason || record.failure_reason || ""}\n`;
+  return `# AI combo: ${state.run_id}\n\nAssertions: ${state.combo_assertions_status ?? "FAIL"}\n\nPreview: ${state.combo_preview_status ?? "not-applicable"}\n\nOverall: ${state.combo_overall ?? "FAIL"}\n\nDuration: ${state.duration_ms ?? "running"} ms\n\nPage: ${state.page?.name ?? ""} (${state.page?.page_type ?? "custom"})\n\nCategory routing: ${JSON.stringify(state.page?.category_routing ?? null)}\n\nSystem page restored: ${state.page?.restored === true ? "PASS" : state.page?.page_type === "system" ? "pending/FAIL" : "not-applicable"}\n\nSelection: ${JSON.stringify(record.composite_selection ?? null)}\n\nPrompt polish: ${record.polish_status ?? "pending"}\n\nOriginal prompt: ${record.original_prompt ?? ""}\n\nPolished prompt: ${record.polished_prompt ?? ""}\n\nGeneration: ${record.generation_status}; attempts: ${JSON.stringify(record.generation_attempts ?? [])}\n\nPoints: ${record.combo_points_before ?? "?"} → ${record.combo_points_after ?? "?"} (${record.combo_points_charged ?? "?"}); history badge: ${record.combo_history_before ?? "?"} → ${record.combo_history_after ?? "?"}; usage badge: ${record.combo_history_record?.points ?? "?"}\n\nSub-block DOM: ${JSON.stringify(record.combo_subblock_dom ?? null)}\n\nSave/reopen: ${record.combo_reopen_verified === true ? "PASS" : "pending"}\n\nPublishing: not performed.\n\nFailure: ${state.page?.failure_reason || record.failure_reason || ""}\n`;
 }
 async function persistReport(state, paths) {
   await writeCompositeJson(paths.state, state);
@@ -37,10 +34,8 @@ function scopedForCombo(config, runId, stateFile, comboKey, modeKey) {
   scoped.ai.generationMode = mode.label;
   scoped.ai.compositeRegression.dynamicTypes = [...dynamicTypes];
   scoped.ai.compositeRegression.maxGenerationAttempts = 3;
-  const body = dynamicTypes.includes("文章列表")
-    ? "Include an English solar hero, a product catalog section, product category navigation, and an article/news list with titles, summaries and dates."
-    : "Include an English solar hero, product cards, and product category navigation with category imagery and labels.";
-  scoped.ai.prompts["复合区块"] = `Create a cohesive English solar company composite block. ${body} Ensure each selected component is a separate, editable, populated section.`;
+  scoped.ai.suppressPromptRunMarker = true;
+  scoped.ai.prompts["复合区块"] = comboDefinition(comboKey).prompt;
   return scoped;
 }
 function routeFor(config, comboKey) { return categorySystemPageFor(combos[comboKey], config.ai.categorySystemPages); }

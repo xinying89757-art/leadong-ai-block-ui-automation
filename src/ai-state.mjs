@@ -48,6 +48,7 @@ export function ensureSpecialTypeState(record) {
 
 export function createInitialAiState(config, page) {
   const now = new Date().toISOString();
+  const promptMarkerEnabled = Boolean(config.ai.runId) && config.ai.suppressPromptRunMarker !== true;
   return {
     version: 1,
     mode: "ai",
@@ -70,8 +71,8 @@ export function createInitialAiState(config, page) {
     types: config.ai.types.map((type, index) => ensureSpecialTypeState({
       index,
       type,
-      prompt: config.ai.runId ? `[runId=${config.ai.runId},type=${type}] ${config.ai.prompts[type]}` : config.ai.prompts[type],
-      original_prompt: config.ai.runId ? `[runId=${config.ai.runId},type=${type}] ${config.ai.prompts[type]}` : config.ai.prompts[type],
+      prompt: promptMarkerEnabled ? `[runId=${config.ai.runId},type=${type}] ${config.ai.prompts[type]}` : config.ai.prompts[type],
+      original_prompt: promptMarkerEnabled ? `[runId=${config.ai.runId},type=${type}] ${config.ai.prompts[type]}` : config.ai.prompts[type],
       generation_prompt: '',
       generation_record_id: '',
       polished_prompt: "",

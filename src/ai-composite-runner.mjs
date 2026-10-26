@@ -1,6 +1,7 @@
 import { AiPagedAutomation } from "./ai-paged-runner.mjs";
 import { AiDialogPointsReader } from "./ai-points.mjs";
 import { parseGenerationHistoryRecord } from "./ai-history-state.mjs";
+import { selectNewCompositeHistoryRecord } from "./ai-combo-prompt.mjs";
 
 function exactButton(scope, selector, text) {
   const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -8,6 +9,13 @@ function exactButton(scope, selector, text) {
 }
 
 async function isVisible(locator) { return await locator.isVisible().catch(() => false); }
+
+async function firstVisible(locators) {
+  for (const locator of locators) {
+    if (await locator.isVisible().catch(() => false)) return locator;
+  }
+  return null;
+}
 
 export function compositeSelectionValid(evidence, expectedDynamicTypes) {
   if (!evidence || evidence.static_layout !== "静态图文" || !evidence.static_layout_selected_before_combo ||
@@ -69,6 +77,64 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
     return super.submitBlockGeneration(frame, generate, prompt, record);
   }
 
+  async inspectCompositeHistoryRecord(frame, _prompt, _historyCountBefore, record) {
+    const trigger = frame.locator(this.config.selectors.aiHistoryTriggerSelector).first();
+    const triggerText = await trigger.innerText().catch(() => "");
+    const currentCount = Number(triggerText.match(/(\d+)\s*$/)?.[1]);
+    if (!Number.isInteger(currentCount)) return false;
+    record.combo_history_after = currentCount;
+    if (currentCount <= record.combo_history_before) return false;
+    if (currentCount !== record.combo_history_before + 1) {
+      throw new Error(`组合区块历史记录数不唯一：${record.combo_history_before} → ${currentCount}`);
+    }
+    const cards = frame.locator(this.config.selectors.aiHistoryCardSelector);
+    const parsedCards = [];
+    for (let index = 0; index < await cards.count().catch(() => 0); index += 1) {
+      const card = cards.nth(index);
+      const text = (await card.innerText().catch(() => "")).replace(/\s+/g, " ").trim();
+      try {
+        const parsed = parseGenerationHistoryRecord(text,
+          await card.getAttribute("data-id").catch(() => "") || await card.getAttribute("data-record-id").catch(() => ""));
+        parsedCards.push({ parsed, card });
+      } catch { /* Running cards may not have complete badges yet. */ }
+    }
+    const mode = this.config.ai.generationModes.find(item => item.label === record.generation_mode);
+    if (!mode) throw new Error(`组合区块生成模式无点数配置：${record.generation_mode}`);
+    const match = selectNewCompositeHistoryRecord(parsedCards.map(item => item.parsed), {
+      baselineCount: record.combo_history_before,
+      currentCount,
+      submittedAt: record.generation_submitted_at,
+      polishedPrompt: record.polished_prompt,
+      mode: mode.key,
+      expectedPoints: mode.expectedCost,
+    });
+    if (!match) return false;
+    const entry = parsedCards.find(({ parsed }) => parsed.epoch_ms === match.epoch_ms && parsed.prompt === match.prompt &&
+      parsed.status === match.status && parsed.points === match.points);
+    if (!entry) throw new Error("新增组合区块历史记录无法绑定到唯一卡片");
+    record.combo_history_record = match;
+    record.generation_record_id = match.id || "";
+    record.last_record_status = match.status;
+    if (match.status === "failed") {
+      const error = new Error("AI 复合区块生成失败：平台明确返回组合操作失败；可安全重新生成");
+      error.code = "GENERATION_FAILED";
+      error.explicitPlatformFailure = true;
+      error.record_id = match.id || "";
+      throw error;
+    }
+    if (match.status !== "completed") return false;
+    if (match.points !== mode.expectedCost || match.mode !== mode.key) {
+      throw new Error(`新组合记录模式/点数不符：${match.mode}/${match.points}`);
+    }
+    const insert = await firstVisible([
+      entry.card.getByText(/插入|应用模块/),
+      entry.card.locator("button").filter({ hasText: /插入|应用模块/ }),
+    ]);
+    if (!insert || !await insert.isEnabled().catch(() => false)) return false;
+    record.combo_actual_mode = match.mode;
+    return { mode: "history", frame, control: insert, recordId: match.id || "" };
+  }
+
   async waitForGeneration(frame, prompt, historyCountBefore, timeoutMs, record) {
     const result = await super.waitForGeneration(frame, prompt, historyCountBefore, timeoutMs, record);
     const current = result?.frame ?? frame;
@@ -81,18 +147,10 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
     if (!Number.isInteger(record.combo_points_charged) || record.combo_points_charged <= 0) throw new Error(`组合区块扣点无效：${record.combo_points_charged}`);
     record.combo_history_after = Number((await current.locator(this.config.selectors.aiHistoryTriggerSelector).innerText()).match(/\d+\s*$/)?.[0]?.trim());
     if (record.combo_history_after !== record.combo_history_before + 1) throw new Error(`组合区块历史记录数异常：${record.combo_history_before} → ${record.combo_history_after}`);
-    const cards = current.locator(this.config.selectors.aiHistoryCardSelector);
-    const matches = [];
-    const normalizedPrompt = String(prompt).replace(/\s+/g, " ").trim();
-    for (let i = 0; i < await cards.count(); i++) {
-      const card = cards.nth(i), text = await card.innerText().catch(() => "");
-      if (text.replace(/\s+/g, " ").trim().indexOf(normalizedPrompt) < 0) continue;
-      try { matches.push(parseGenerationHistoryRecord(text, await card.getAttribute("data-id").catch(() => ""))); } catch {}
-    }
-    if (matches.length !== 1) throw new Error(`本轮组合区块生成记录匹配数 ${matches.length}，预期唯一`);
-    record.combo_history_record = matches[0];
-    if (matches[0].points !== record.combo_points_charged) throw new Error(`历史 points badge ${matches[0].points} 与余额扣点 ${record.combo_points_charged} 不符`);
-    record.combo_actual_mode = matches[0].mode;
+    const match = record.combo_history_record;
+    if (!match) throw new Error("缺少按历史基线、提交时间、润色提示词、模式和点数匹配的新组合记录");
+    if (match.points !== record.combo_points_charged) throw new Error(`历史 points badge ${match.points} 与余额扣点 ${record.combo_points_charged} 不符`);
+    record.combo_actual_mode = match.mode;
     return result;
   }
 

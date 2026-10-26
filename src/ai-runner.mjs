@@ -384,9 +384,15 @@ export class AiBlockAutomation {
         exactText(frame, "应用模块"),
         frame.locator("button").filter({ hasText: "应用模块" }).first(),
       ]);
-      if (refreshCount === 0 && applyModule && await applyModule.isEnabled().catch(() => false)) return { mode: "module", control: applyModule, frame };
+      if (record?.type !== "复合区块" && refreshCount === 0 && applyModule && await applyModule.isEnabled().catch(() => false)) return { mode: "module", control: applyModule, frame };
       const cards = frame.locator(this.config.selectors.aiHistoryCardSelector);
       const cardCount = await cards.count().catch(() => 0);
+      if (record?.type === "复合区块" && typeof this.inspectCompositeHistoryRecord === "function") {
+        const compositeResult = await this.inspectCompositeHistoryRecord(frame, prompt, historyCountBefore, record);
+        if (compositeResult) return compositeResult;
+        if (await visible(frame.getByText(/AI正在生成|生成中/).first())) metadata.last_record_status = "running";
+        return false;
+      }
       // The service does not guarantee newest-first ordering.  Inspect all
       // newly-created/prompt-matching cards so a failed upload/image request
       // is reported as a confirmed refund instead of becoming a generic
@@ -553,7 +559,8 @@ export class AiBlockAutomation {
     }
     const attemptSuffix = record.type === '复合区块' && Number(record.generation_attempt_number) > 1
       ? `,attempt=${Number(record.generation_attempt_number)}` : '';
-    const reference = this.aiConfig.runId ? `[runId=${this.aiConfig.runId},type=${record.type}${attemptSuffix}]` : '';
+    const reference = this.aiConfig.runId && this.aiConfig.suppressPromptRunMarker !== true
+      ? `[runId=${this.aiConfig.runId},type=${record.type}${attemptSuffix}]` : '';
     if (reference && !generationPrompt.includes(reference)) {
       generationPrompt = `${reference} ${generationPrompt}`;
       await fillAndVerify(prompt, generationPrompt);
