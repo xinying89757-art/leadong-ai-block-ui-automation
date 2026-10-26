@@ -143,6 +143,14 @@ export class AiBlockAutomation {
     return this.editor.page.frames().find((frame) => frame.url().includes(this.config.selectors.aiEditorFrameUrlIncludes));
   }
 
+  async recoverEditorForStatusRefresh() {
+    await this.editor.page.reload({ waitUntil: "domcontentloaded" });
+    await this.editor.waitForCanvasReady();
+    if (this.page?.name && typeof this.editor.openCustomPage === "function" && this.page.page_type !== "system") {
+      await this.editor.openCustomPage(this.page.name);
+    }
+  }
+
   async openAiDialog() {
     const ai = await this.waitForAiImage();
     // A specialized block setting can leave the 4.0 editor's exit-confirm
@@ -474,7 +482,15 @@ export class AiBlockAutomation {
         } catch (error) {
           metadata.generation_refresh_errors = [...(metadata.generation_refresh_errors ?? []),
             { at: new Date().toISOString(), message: String(error?.message ?? error).split("\n")[0] }].slice(-5);
-          frame = this.aiFrame() ?? frame;
+          // The AI iframe can hang on its page-load mask. Reload the editor
+          // (read-only; the generation keeps running server-side) and reopen.
+          try {
+            await this.recoverEditorForStatusRefresh();
+            frame = await this.openAiDialog();
+            const history = frame.locator(this.config.selectors.aiHistoryTriggerSelector).first();
+            if (await visible(history)) await history.click();
+            metadata.generation_refresh_recoveries = (metadata.generation_refresh_recoveries ?? 0) + 1;
+          } catch { frame = this.aiFrame() ?? frame; }
         }
         refreshCount += 1; nextRefresh = Date.now() + refreshMs;
       }

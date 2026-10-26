@@ -52,6 +52,13 @@ export class AiComboSystemPageAutomation extends AiCompositeRegressionAutomation
     return this.state;
   }
 
+  async recoverEditorForStatusRefresh() {
+    await this.editor.page.reload({ waitUntil: 'domcontentloaded' });
+    await this.editor.waitForCanvasReady(); await this.editor.openSystemPage(this.systemPage);
+    const identity = await this.editor.currentPageIdentity();
+    if (identity.name !== this.systemPage || identity.id !== this.page.target_identity.id) throw new Error('状态刷新后系统页身份变化');
+  }
+
   async afterFinalApply(context) {
     await super.afterFinalApply(context);
     const record = context.record;

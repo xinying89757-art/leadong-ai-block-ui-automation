@@ -201,7 +201,11 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
 
   canResumeSubmittedGeneration(record) {
     return record?.type === this.config.ai.compositeRegression.type &&
-      ["uncertain", "succeeded"].includes(record.generation_status) && record.generation_submit_confirmed === true &&
+      (["uncertain", "succeeded"].includes(record.generation_status) ||
+        // A test-side wait/refresh error (e.g. an editor overlay blocking a
+        // click) is not a platform result; the submitted row may be complete.
+        (record.generation_status === "failed" && record.generation_attempts?.at(-1)?.explicit_platform_failure !== true)) &&
+      record.generation_submit_confirmed === true &&
       record.apply_status !== "applied" && record.application_attempted !== true &&
       !record.application_commit_confirmed && !record.committed_block_id;
   }
