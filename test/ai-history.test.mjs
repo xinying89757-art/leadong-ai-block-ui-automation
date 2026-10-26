@@ -11,6 +11,10 @@ test('history parser extracts separate badges, mode cost and China-local timesta
  for(const [mode,key,points] of [['快速模式','quick',6],['高级模式','advanced',15],['进阶模式','advanced',15],['深度模式','deep',30]])assert.equal(parseGenerationHistoryRecord(row({mode,points})).mode,key);
  for(const input of ['上传图片','提供网址'])assert.equal(parseGenerationHistoryRecord(row({input})).input_method,input);
 });
+test('history parser needs line-separated status and metadata badges',()=>{
+ assert.equal(parseGenerationHistoryRecord(row()).status,'completed');
+ assert.throws(()=>parseGenerationHistoryRecord(row().replace(/\s+/g,' ')),/History status badge missing/);
+});
 test('history rejects missing badges and invalid calendar timestamps',()=>{
  for(const text of ['missing',row().replace('文字描述\n',''),row().replace('快速模式','unknown'),row({timestamp:'2026-02-30 18:00:00'}),row({points:6}).replace('6 点\n','')])assert.throws(()=>parseGenerationHistoryRecord(text));
  assert.throws(()=>parseRecordTimestamp('2026-10-22 25:00:00'));

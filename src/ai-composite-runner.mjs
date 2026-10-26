@@ -181,8 +181,9 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
       const matches = [];
       for (let index = 0; index < await cards.count().catch(() => 0); index += 1) {
         const card = cards.nth(index);
-        const text = (await card.innerText().catch(() => "")).replace(/\s+/g, " ");
-        if (needle && text.includes(needle)) matches.push({ card, text });
+        const text = await card.innerText().catch(() => "");
+        const normalizedText = text.replace(/\s+/g, " ");
+        if (needle && normalizedText.includes(needle)) matches.push({ card, text });
       }
       if (matches.length === 1) {
         const { card, text } = matches[0];
