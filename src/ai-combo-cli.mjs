@@ -27,7 +27,7 @@ async function persistReport(state, paths) {
 }
 function scopedForCombo(config, runId, stateFile, comboKey, modeKey) {
   const dynamicTypes = combos[comboKey];
-  if (!dynamicTypes) throw new Error("combo must be product_pair, article_pair, or three_type");
+  if (!dynamicTypes) throw new Error(`combo must be one of: ${comboKeys.join(", ")}`);
   const scoped = compositeScopedConfig(config, runId, stateFile);
   const mode = scoped.ai.generationModes.find(item => item.key === modeKey);
   if (!mode) throw new Error(`Unsupported generation mode: ${modeKey}`);
@@ -36,6 +36,9 @@ function scopedForCombo(config, runId, stateFile, comboKey, modeKey) {
   scoped.ai.compositeRegression.dynamicTypes = [...dynamicTypes];
   scoped.ai.compositeRegression.maxGenerationAttempts = 3;
   scoped.ai.compositeRegression.maxContinuations = 1;
+  // Video/gallery/download/FAQ combos regularly need more than 10 minutes.
+  scoped.ai.compositeRegression.generationTimeoutMs = Math.max(scoped.ai.compositeRegression.generationTimeoutMs ?? 0, 1_200_000);
+  scoped.ai.generationTimeoutMs = scoped.ai.compositeRegression.generationTimeoutMs;
   scoped.ai.suppressPromptRunMarker = true;
   scoped.ai.prompts["复合区块"] = comboDefinition(comboKey).prompt;
   return scoped;
@@ -55,7 +58,7 @@ async function main() {
   if (!["run", "resume", "status", "cleanup", "inspect"].includes(command)) throw new Error("Unknown ai:combo command");
   if (command !== "status" && command !== "inspect" && args.apply !== true) throw new Error(`${command} requires --apply`);
   const comboKey = args.combo ?? "product_pair";
-  if (!combos[comboKey]) throw new Error("combo must be product_pair, article_pair, or three_type");
+  if (!combos[comboKey]) throw new Error(`combo must be one of: ${comboKeys.join(", ")}`);
   const config = await loadConfig(args.config ?? "config/run.json");
   const runId = args["run-id"] ?? `combo-${comboKey}-${new Date().toISOString().replace(/[-:.TZ]/g, "")}`;
   if (!/^[A-Za-z0-9_-]{1,80}$/.test(runId)) throw new Error("Invalid run-id");

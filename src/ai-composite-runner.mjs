@@ -21,8 +21,10 @@ export function compositeSelectionValid(evidence, expectedDynamicTypes) {
   if (!evidence || evidence.static_layout !== "静态图文" || !evidence.static_layout_selected_before_combo ||
       evidence.combination_enabled !== true || evidence.max_dynamic_types !== 3) return false;
   const actual = evidence.selected_dynamic_types;
+  const norm = value => String(value ?? "").replace(/\s+/g, "");
+  const actualNorm = Array.isArray(actual) ? actual.map(norm) : [];
   return Array.isArray(actual) && actual.length === expectedDynamicTypes.length &&
-    expectedDynamicTypes.every(type => actual.includes(type)) && new Set(actual).size === actual.length;
+    expectedDynamicTypes.every(type => actualNorm.includes(norm(type))) && new Set(actualNorm).size === actualNorm.length;
 }
 
 export function canRetryCompositeGeneration(error, attemptNumber, maxAttempts) {
@@ -410,7 +412,7 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
       const option = dynamicOptions.nth(index);
       const name = (await option.innerText().catch(() => "")).trim();
       if (await option.getAttribute("aria-pressed").catch(() => null) === "true") observed.push(name);
-      const shouldSelect = mode.dynamicTypes.includes(name);
+      const shouldSelect = mode.dynamicTypes.some(type => type.replace(/\s+/g, "") === name.replace(/\s+/g, ""));
       const isSelected = await option.getAttribute("aria-pressed").catch(() => null) === "true";
       if (shouldSelect !== isSelected) {
         await option.click();

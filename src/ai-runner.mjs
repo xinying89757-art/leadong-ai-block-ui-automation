@@ -35,10 +35,23 @@ async function firstVisible(locators) {
   return null;
 }
 
-async function clickAiEntry(locator) {
+export async function clickAiEntry(locator, { attempts = 4, settleMs = 60000 } = {}) {
   // Force clicks can succeed syntactically while a higher iframe receives
   // the physical pointer event. Require a genuine, unobstructed UI click.
-  await locator.click();
+  // The editor shell sometimes shows a transient page-load mask (or a
+  // still-closing AI iframe) over the entry; wait for it to clear and retry
+  // the same genuine click instead of failing the whole run.
+  for (let attempt = 1; ; attempt += 1) {
+    try { await locator.click({ timeout: 15000 }); return; } catch (error) {
+      if (attempt >= attempts || !/intercepts pointer events|Timeout/i.test(String(error?.message))) throw error;
+      const page = typeof locator.page === "function" ? locator.page() : null;
+      if (page) {
+        await page.locator(".el-loading-mask:visible, .loadingMask2:visible").first()
+          .waitFor({ state: "hidden", timeout: settleMs }).catch(() => {});
+        await page.waitForTimeout(1000);
+      }
+    }
+  }
 }
 
 function exactText(scope, text) {
@@ -451,10 +464,18 @@ export class AiBlockAutomation {
         return result;
       }
       if (Date.now() >= nextRefresh) {
-        await this.closeAiResult();
-        frame = await this.openAiDialog();
-        const history = frame.locator(this.config.selectors.aiHistoryTriggerSelector).first();
-        if (await visible(history)) await history.click();
+        // A status refresh is read-only. A transient editor overlay during the
+        // refresh must not abort the wait for an already submitted generation.
+        try {
+          await this.closeAiResult();
+          frame = await this.openAiDialog();
+          const history = frame.locator(this.config.selectors.aiHistoryTriggerSelector).first();
+          if (await visible(history)) await history.click();
+        } catch (error) {
+          metadata.generation_refresh_errors = [...(metadata.generation_refresh_errors ?? []),
+            { at: new Date().toISOString(), message: String(error?.message ?? error).split("\n")[0] }].slice(-5);
+          frame = this.aiFrame() ?? frame;
+        }
         refreshCount += 1; nextRefresh = Date.now() + refreshMs;
       }
       await this.editor.page.waitForTimeout(Math.min(500, Math.max(0, deadline - Date.now())));

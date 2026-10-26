@@ -1,6 +1,7 @@
 import { AiCompositeRegressionAutomation } from './ai-composite-runner.mjs';
 import { createInitialAiState, assertAiStateCompatible } from './ai-state.mjs';
 import { aiPageDescriptor } from './config.mjs';
+import { comboSubblockPattern } from './ai-combo-prompt.mjs';
 import { snapshotSystemPageBlocks, assertSystemPageRestored, countOwnedSystemPageBlocks } from './ai-system-page-snapshot.mjs';
 
 export class AiComboSystemPageAutomation extends AiCompositeRegressionAutomation {
@@ -82,8 +83,7 @@ export class AiComboSystemPageAutomation extends AiCompositeRegressionAutomation
       record.editor_verified = true; state.page.editor_verified = true;
       const evidence = { checked_types: [], matches: {} };
       for (const type of this.config.ai.compositeRegression.dynamicTypes) {
-        const needle = type === '产品列表' ? /product|goods/i : type === '产品分类' ? /product.?categor|categor(y|ies)|classif/i
-          : type === '文章列表' ? /article|news/i : /article.?categor|categor(y|ies)|classif/i;
+        const needle = comboSubblockPattern(type);
         let found = 0;
         for (const frame of this.editor.canvasContexts()) {
           const block = frame.locator(`#${record.committed_block_id}`);

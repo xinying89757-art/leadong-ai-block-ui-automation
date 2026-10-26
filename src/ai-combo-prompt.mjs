@@ -2,7 +2,27 @@ const definitions = {
   product_pair: { types: ["产品列表", "产品分类"], prompt: "产品列表和产品分类" },
   article_pair: { types: ["文章列表", "文章分类"], prompt: "文章列表和文章分类" },
   three_type: { types: ["产品列表", "产品分类", "文章列表"], prompt: "产品列表、产品分类和文章列表" },
+  video_pair: { types: ["视频列表", "视频分类"], prompt: "视频列表和视频分类" },
+  gallery_pair: { types: ["图册列表", "图册分类"], prompt: "图册列表和图册分类" },
+  download_pair: { types: ["下载列表", "下载分类"], prompt: "下载列表和下载分类" },
+  faq_pair: { types: ["FAQ 列表", "FAQ 分类"], prompt: "FAQ列表和FAQ分类" },
 };
+
+const CATEGORY_PATTERN = /categor(y|ies)|classif|sort|cate/i;
+const subblockPatterns = {
+  "产品列表": /product|goods/i,
+  "产品分类": /product.?categor|categor(y|ies)|classif/i,
+  "文章列表": /article|news/i,
+  "文章分类": /article.?categor|news.?categor|categor(y|ies)|classif/i,
+  "视频列表": /video/i,
+  "图册列表": /gallery|album|photo|picture/i,
+  "下载列表": /download|file/i,
+  "FAQ 列表": /faq|question/i,
+};
+export function comboSubblockPattern(type) {
+  return subblockPatterns[type] ?? (/分类$/.test(type) ? CATEGORY_PATTERN : /video|gallery|download|faq/i);
+}
+export function normalizeComboTypeName(value) { return String(value ?? "").replace(/\s+/g, "").trim(); }
 
 export const comboKeys = Object.freeze(Object.keys(definitions));
 export function comboDefinition(key) { return definitions[key] ?? null; }
