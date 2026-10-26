@@ -142,16 +142,19 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
     const current = result?.frame ?? frame;
     const mode = this.config.ai.generationModes.find(item => item.label === this.config.ai.compositeRegression.generationMode);
     if (!mode) throw new Error("组合区块生成模式未配置点数规则");
-    // Derive the charge from the balance and cross-check it against the
-    // matching history badge. This preserves actual cost for safe resumes.
+    // Use the exact new history row for this generation's charge. A previous
+    // timed-out request can finish after its local process exits, so the live
+    // balance delta may include more than this record's charge.
     record.combo_points_after = await this.comboPoints.read(current);
-    record.combo_points_charged = record.combo_points_before - record.combo_points_after;
-    if (!Number.isInteger(record.combo_points_charged) || record.combo_points_charged <= 0) throw new Error(`组合区块扣点无效：${record.combo_points_charged}`);
+    record.combo_balance_delta_observed = record.combo_points_before - record.combo_points_after;
     record.combo_history_after = Number((await current.locator(this.config.selectors.aiHistoryTriggerSelector).innerText()).match(/\d+\s*$/)?.[0]?.trim());
     if (!Number.isInteger(record.combo_history_after) || record.combo_history_after <= record.combo_history_before) throw new Error(`组合区块历史记录数未增加：${record.combo_history_before} → ${record.combo_history_after}`);
     const match = record.combo_history_record;
     if (!match) throw new Error("缺少按历史基线、提交时间、润色提示词、模式和点数匹配的新组合记录");
-    if (match.points !== record.combo_points_charged) throw new Error(`历史 points badge ${match.points} 与余额扣点 ${record.combo_points_charged} 不符`);
+    if (!Number.isInteger(match.points) || match.points !== mode.expectedCost) throw new Error(`历史 points badge ${match.points} 与模式成本 ${mode.expectedCost} 不符`);
+    if (!Number.isInteger(record.combo_balance_delta_observed) || record.combo_balance_delta_observed < match.points) throw new Error(`余额扣点 ${record.combo_balance_delta_observed} 小于该历史记录成本 ${match.points}`);
+    record.combo_points_charged = match.points;
+    record.combo_balance_delta_attribution = record.combo_balance_delta_observed === match.points ? "exact" : "contains additional completed generation charge(s)";
     record.combo_actual_mode = match.mode;
     return result;
   }

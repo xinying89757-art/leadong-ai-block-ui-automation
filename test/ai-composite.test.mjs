@@ -26,6 +26,18 @@ test("combo pair requires equal balance delta and generation-history points badg
   assert.throws(() => assertComboPairCostConsistency(make("one"), mismatch), /badge/);
 });
 
+test("combo pair can isolate each history-row cost from additional delayed balance charges", () => {
+  const make = (run_id, before, after, balanceDelta, attributed = false) => ({ run_id, combo_assertions_status: "PASS", types: [{
+    composite_selection: { selected_dynamic_types: ["产品列表", "产品分类"] },
+    combo_points_before: before, combo_points_after: after, combo_points_charged: 6,
+    combo_balance_delta_observed: balanceDelta,
+    ...(attributed ? { combo_balance_delta_attribution: "contains additional completed generation charge(s)" } : {}),
+    combo_history_record: { points: 6 },
+  }] });
+  assert.equal(assertComboPairCostConsistency(make("one", 100, 94, 6), make("two", 94, 58, 36, true)).cost, 6);
+  assert.throws(() => assertComboPairCostConsistency(make("one", 100, 94, 6), make("two", 94, 58, 36)), /balance delta/);
+});
+
 test("复合区块专项默认使用静态图文、产品列表和产品分类", async () => {
   const config = await loadConfig("config/run.json");
   const mode = config.ai.compositeRegression;
