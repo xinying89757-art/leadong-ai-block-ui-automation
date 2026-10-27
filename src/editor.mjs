@@ -1,9 +1,11 @@
+import { sleep, pollUntil, PollTimeoutError } from "./wait-utils.mjs";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { assertPageCapacityAvailable } from './ai-platform-errors.mjs';
 import { chromium } from "playwright";
 import { pageCreationRequest, pageCreationResult, pagePath, comparePageIdentity } from './page-identity.mjs';
-import { authConfig, automaticLogin, ensureAuthenticated, isLoginPage } from "./auth.mjs";
+import { authConfig, automaticLogin, dismissBlockingModals, ensureAuthenticated, isLoginPage } from "./auth.mjs";
+import { browserLaunchOptions } from "./browser-options.mjs";
 
 function regex(source) {
   return new RegExp(source, "i");
@@ -55,15 +57,12 @@ async function firstVisible(locators) {
 }
 
 async function waitFirstVisible(locators, timeoutMs = 15000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const found = await firstVisible(locators);
-    if (found) {
-      return found;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 100));
+  try {
+    return await pollUntil(() => firstVisible(locators), { timeoutMs, intervalMs: 100 });
+  } catch (error) {
+    if (error instanceof PollTimeoutError) return null;
+    throw error;
   }
-  return null;
 }
 
 async function isInViewport(locator, { fully = false } = {}) {
@@ -133,10 +132,8 @@ export async function launchEditorBrowser(config, options = {}) {
     : config.paths.userDataDir;
   await mkdir(profileDir, { recursive: true });
   const browserOptions = {
-    channel: config.browser.channel,
-    headless: options.headless ?? config.browser.headless,
+    ...browserLaunchOptions(config, options),
     locale: config.browser.locale,
-    slowMo: options.slowMo ?? config.browser.slowMo,
     viewport: null,
     args: ["--start-maximized"],
   };
@@ -227,10 +224,7 @@ export class LeadongEditor {
     }
     if (this.page.url().includes(this.config.siteListUrlIncludes)) {
       const cards = this.page.locator(this.config.selectors.siteCardSelector);
-      const deadline = Date.now() + Math.min(this.config.timeouts.actionMs, 10000);
-      while (Date.now() < deadline && !(await cards.count().catch(() => 0))) {
-        await this.page.waitForTimeout(250);
-      }
+      await cards.first().waitFor({ state: "attached", timeout: Math.min(this.config.timeouts.actionMs, 10000) }).catch(() => {});
       if (!(await cards.count().catch(() => 0))) {
         await automaticLogin(this.page, this.page.context(), this.config);
         await this.page.goto(authConfig(this.config).adminUrl, { waitUntil: "domcontentloaded" });
@@ -240,6 +234,7 @@ export class LeadongEditor {
       throw new Error("登录状态失效，自动登录未能恢复，请检查外部账号配置或运行 npm run auth");
     }
     if (this.page.url().includes(this.config.siteListUrlIncludes)) {
+      await dismissBlockingModals(this.page);
       await this.enterTargetSite();
     }
     if (!this.page.url().includes("/phoenix/pagebuilder")) {
@@ -314,7 +309,7 @@ export class LeadongEditor {
       if (editorPage) {
         break;
       }
-      await new Promise((resolve) => setTimeout(resolve, 250));
+      await sleep(250);
     } } finally { for (const [candidate, listener] of listeners) candidate.off('framenavigated', listener); }
     if (!editorPage) throw new Error('点击编辑网站后未进入本次编辑器，拒绝复用其他旧编辑器标签页');
     if (editorPage) {
@@ -325,7 +320,7 @@ export class LeadongEditor {
       );
       await this.page.waitForLoadState("domcontentloaded").catch(() => {});
     }
-    await this.page.waitForTimeout(1000);
+    await this.waitForCanvasReady();
   }
 
   async openPageMenu() {
@@ -339,6 +334,11 @@ export class LeadongEditor {
         return style.display !== "none" && style.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
       }),
     ).catch(() => false)) return;
+    const stableTrigger = await firstVisible([menuRoot.locator("a.backstage-topToolbar-menuIcon")]);
+    if (stableTrigger) {
+      await stableTrigger.click();
+      return;
+    }
     const candidates = [];
     for (const scope of this.contexts()) {
       candidates.push(
@@ -1466,8 +1466,14 @@ export class LeadongEditor {
       if (confirm) {
         await confirm.click();
       }
-      await this.page.waitForTimeout(500);
-      return (await this.auditBlock(blockId)).length === 0;
+      try {
+        return await pollUntil(async () => (await this.auditBlock(blockId)).length === 0, {
+          timeoutMs: this.config.timeouts.actionMs, intervalMs: 100, message: "区块删除等待超时",
+        });
+      } catch (error) {
+        if (error instanceof PollTimeoutError) return false;
+        throw error;
+      }
     }
     return false;
   }

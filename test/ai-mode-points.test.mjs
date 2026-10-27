@@ -3,7 +3,7 @@ import test from "node:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { loadConfig, validateModePointConfig } from "../src/config.mjs";
+import { generationModeConfig, loadConfig, validateGenerationModes, validateModePointConfig } from "../src/config.mjs";
 import { AiDialogPointsReader, parseAvailablePoints } from "../src/ai-points.mjs";
 import { AiModePointsAutomation } from "../src/ai-mode-points-runner.mjs";
 import {
@@ -12,20 +12,28 @@ import {
   modePointsPage,
   modePointsPaths,
   resumeSafety,
+  assertModePointsState,
   modeResumeAction,
   writeModeJson,
 } from "../src/ai-mode-points-state.mjs";
 
-test("三模式点数配置固定为 6、10、20 且页面按运行 ID 隔离", async () => {
+test("三模式点数配置为 6、15、30 且页面按运行 ID 隔离", async () => {
   const config = await loadConfig("config/run.json");
   assert.deepEqual(config.ai.modePointRegression.modes.map(({ key, expectedCost }) => [key, expectedCost]), [
-    ["quick", 6], ["advanced", 10], ["deep", 20],
+    ["quick", 6], ["advanced", 15], ["deep", 30],
   ]);
   assert.equal(config.ai.modePointRegression.promptPolishEnabled, false);
+  assert.equal(generationModeConfig(config.ai, "高级模式").expectedCost, 15);
+  assert.throws(() => validateGenerationModes([{ key: "dup", label: "A", expectedCost: 1 }, { key: "dup", label: "B", expectedCost: 2 }]), /唯一/);
+  assert.throws(() => validateGenerationModes([{ key: "x", label: "A", expectedCost: 0 }]), /正整数/);
   const state = createModePointsState(config, "mode-points-test-1");
   assert.deepEqual(state.records.map((record) => record.type), ["静态图文", "静态图文", "静态图文"]);
   assert.equal(new Set(state.records.map((record) => record.mode)).size, 3);
   assert.ok(state.records.every((record) => record.original_prompt.includes(record.heading)));
+  assert.doesNotThrow(() => assertModePointsState(state, config, "mode-points-test-1"));
+  const changedConfig = structuredClone(config);
+  changedConfig.ai.modePointRegression.modes[1].expectedCost += 1;
+  assert.throws(() => assertModePointsState(state, changedConfig, "mode-points-test-1"), /模式配置已变化/);
   assert.ok(modePointsPage(config, "mode-points-test-1").name.endsWith("mode-points-test-1"));
   assert.throws(() => validateModePointConfig({ ...config.ai.modePointRegression, modes: [
     config.ai.modePointRegression.modes[0], config.ai.modePointRegression.modes[0], config.ai.modePointRegression.modes[2],
@@ -86,7 +94,7 @@ test("读取 MoliAI 点数并按余额差值标记通过或失败", async () => 
   advanced.points_before = 2736;
   assert.equal(finishPointsCheck(advanced, 2725), "failed");
   assert.equal(advanced.actual_cost, 11);
-  assert.match(advanced.points_failure_reason, /预期扣除 10 点，实际扣除 11 点/);
+  assert.match(advanced.points_failure_reason, /预期扣除 15 点，实际扣除 11 点/);
 });
 
 test("余额异步刷新会等待预期扣点", async () => {
@@ -103,8 +111,9 @@ test("从 AI 弹窗设置面板读取余额后关闭面板", async () => {
     isVisible: async () => open,
     waitFor: async ({ state }) => assert.equal(open, state === "visible"),
     locator: (selector) => {
-      assert.equal(selector, ".moli-credit-detail");
-      return { waitFor: async () => {}, innerText: async () => "可用 2,706 点/总计 3,000 点" };
+      if (selector === ".moli-credit-detail") return { waitFor: async () => {}, innerText: async () => "可用 2,706 点/总计 3,000 点" };
+      assert.match(selector, /loading|spinner|busy/);
+      return { count: async () => 0 };
     },
   };
   const gear = {

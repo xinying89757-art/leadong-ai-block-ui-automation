@@ -1,3 +1,4 @@
+import { fillAndVerify, pollUntil, sleep } from "./wait-utils.mjs";
 import {
   assertFullPageState,
   fullPagePaths,
@@ -27,13 +28,7 @@ async function firstVisible(locator) {
 }
 
 export async function waitFor(check, timeoutMs, label, intervalMs = 300) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const result = await check();
-    if (result) return result;
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-  }
-  throw new Error(`${label}等待超时`);
+  return pollUntil(check, { timeoutMs, intervalMs, message: `${label}等待超时` });
 }
 
 function evidenceFromText(text, heading, sections, requireSectionLabels = true) {
@@ -280,16 +275,19 @@ export class AiFullPageAutomation {
     await tab.click();
     if (!(await tab.evaluate((element) => element.classList.contains("active")))) throw new Error("文字描述页签未选中");
     const tier = frame.locator("button.tier-trigger").first();
-    if (!(await tier.innerText()).includes(this.mode.generationMode)) {
+    const configuredMode = this.config.ai.generationModes?.find(item => item.key === "quick");
+    const labels = [...new Set([configuredMode?.label, this.mode.generationMode, ...(configuredMode?.aliases ?? [])].filter(Boolean))];
+    let selectedText = await tier.innerText();
+    if (!labels.some(label => selectedText.includes(label))) {
       await tier.click();
-      const choice = await firstVisible(frame.locator(".tier-option").filter({ hasText: this.mode.generationMode }));
-      if (!choice) throw new Error("未找到快速模式");
+      const choice = await firstVisible(labels.map(label => frame.locator(".tier-option").filter({ hasText: label })));
+      if (!choice) throw new Error(`未找到快速模式：${labels.join(" / ")}`);
       await choice.click();
+      selectedText = await tier.innerText();
     }
-    if (!(await tier.innerText()).includes(this.mode.generationMode)) throw new Error("快速模式选择失败");
+    if (!labels.some(label => selectedText.includes(label))) throw new Error("快速模式选择失败");
     const prompt = frame.locator("textarea.ai-prompt-input--card").first();
-    await prompt.fill(promptText);
-    if ((await prompt.inputValue()).trim() !== promptText) throw new Error("整页提示词未成功填入");
+    await fillAndVerify(prompt, promptText);
     // Allow the AI editor's debounced prompt state to catch up before submit.
     await frame.waitForTimeout(1500);
     if ((await prompt.inputValue()).trim() !== promptText) throw new Error("整页提示词在提交前发生变化");
@@ -370,7 +368,7 @@ export class AiFullPageAutomation {
     await this.closeFullPageGenerator(current);
     for (let refresh = 1; refresh <= maxRefreshes && Date.now() - started < timeoutMs; refresh += 1) {
       const remaining = timeoutMs - (Date.now() - started);
-      await new Promise((resolve) => setTimeout(resolve, Math.min(intervalMs, Math.max(0, remaining))));
+      await sleep(Math.min(intervalMs, Math.max(0, remaining)));
       if (Date.now() - started >= timeoutMs) break;
       current = await this.openGenerator();
       this.state.generation.status_refresh_count = refresh;

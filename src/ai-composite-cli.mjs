@@ -107,7 +107,7 @@ async function main() {
   }
 
   const scoped = compositeScopedConfig(config, runId, paths.state);
-  const { context, page } = await launchEditorBrowser(scoped, { headless: options.headless === true, isolatedProfile: false, slowMo: 0 });
+  const { context, page } = await launchEditorBrowser(scoped, { ...(options.headless === true ? { headless: true } : {}), isolatedProfile: false });
   let automation;
   try {
     const editor = new LeadongEditor(page, scoped);

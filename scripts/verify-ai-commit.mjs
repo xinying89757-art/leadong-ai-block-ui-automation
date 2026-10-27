@@ -2,13 +2,15 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { chromium } from 'playwright';
+import { browserLaunchOptions } from '../src/browser-options.mjs';
 import { projectRoot, loadConfig } from '../src/config.mjs';
 import { AiProductFilterAutomation } from '../src/ai-product-filter-runner.mjs';
 import { committedAiSnapshot, waitForAiCommit } from '../src/ai-canvas-commit.mjs';
 import { AiBlockAutomation } from '../src/ai-runner.mjs';
 import { pageContentSnapshot } from '../src/ai-content-ready.mjs';
-const browser = await chromium.launch({ channel: 'chrome', headless: false });
+let browser;
 try {
+  browser = await chromium.launch(browserLaunchOptions({ browser: { channel: 'chrome', headless: false } }));
   const page = await browser.newPage();
   await page.setContent(`<div id="backstage-bodyArea">
     <div class="ai-container"><button>AI</button></div>
@@ -67,4 +69,4 @@ try {
   await mkdir(dir, { recursive: true });
   await page.screenshot({ path: path.join(dir, 'ai-commit-fixture.png') });
   console.log(JSON.stringify({ ok: true, checks: ['nested-wrapper-dedup', 'hidden-template-exclusion', 'placeholder-exclusion', 'unique-commit-barrier', 'lazy-preview-image', 'close-inner-dialog-only', 'filter-component-not-layout'] }));
-} finally { await browser.close(); }
+} finally { await browser?.close().catch(() => {}); }

@@ -1,5 +1,5 @@
 {
-  "name": "leadong-3-editor-block-heading-automation",
+  "name": "leadong-ai-block-ui-automation",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -71,7 +71,7 @@
     "ai:cleanup": "node src/ai-cli.mjs lifecycle:cleanup",
     "ai:restore": "node src/ai-cli.mjs lifecycle:restore",
     "ai:lifecycle:status": "node src/ai-cli.mjs lifecycle:status",
-    "test": "node --test",
+    "test": "node --test --test-timeout=120000",
     "test:ai-stability-ui": "node scripts/verify-ai-stability.mjs",
     "ai:verify-fixes": "node scripts/verify-ai-regression-fixes.mjs",
     "test:ai-commit-ui": "node scripts/verify-ai-commit.mjs",
@@ -86,7 +86,6 @@
     "@midscene/shared": "^1.13.1",
     "@midscene/web": "1.13.1",
     "@playwright/test": "1.61.1",
-    "exceljs": "4.4.0",
     "playwright": "1.61.1"
   },
   "overrides": {

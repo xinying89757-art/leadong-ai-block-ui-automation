@@ -38,7 +38,7 @@ const persist = async () => {
 const collect = async stage => (await collectStageItems(config, suite, stage))
   .filter(item => stage.key !== 'history-reuse' || item.target === 'full_page');
 await persist();
-const { context, page } = await launchEditorBrowser(config, { headless: false, isolatedProfile: false, slowMo: 0 });
+const { context, page } = await launchEditorBrowser(config, { isolatedProfile: false });
 let editor = new LeadongEditor(page, config);
 async function bindFreshEditor() {
   if (editor.insertionPending || editor.unsavedChanges) editor = new LeadongEditor(await context.newPage(), config);

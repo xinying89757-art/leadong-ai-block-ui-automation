@@ -1,3 +1,4 @@
+import { sleep } from "./wait-utils.mjs";
 // Temporary AI editors have nested canvases, sometimes with identical IDs.
 export function isTemporaryAiFrame(frame) {
   for (let current = frame; current; current = current.parentFrame?.()) {
@@ -80,7 +81,7 @@ export async function waitForAiCommit(read, baseline, { timeoutMs = 60000, stabl
       if (!stableSince || key !== lastKey) { stableSince = Date.now(); lastKey = key; }
       if (Date.now() - stableSince >= stableMs) return { ...last, addedId: added[0] };
     }
-    await new Promise(resolve => setTimeout(resolve, Math.min(pollMs, Math.max(0, deadline - Date.now()))));
+    await sleep(Math.min(pollMs, Math.max(0, deadline - Date.now())));
   }
   const error = new Error(`应用状态不确定：3.0 正文未确认唯一新增 AI 区块（${baseline.count} → ${last?.count ?? 0}），该页面隔离`);
   error.code = 'AI_COMMIT_UNCONFIRMED';

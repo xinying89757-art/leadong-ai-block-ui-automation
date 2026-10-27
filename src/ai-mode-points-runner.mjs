@@ -1,3 +1,4 @@
+import { pollUntil } from "./wait-utils.mjs";
 import { AiBlockAutomation } from "./ai-runner.mjs";
 import { AiDialogPointsReader } from "./ai-points.mjs";
 import { committedAiSnapshot, waitForAiCommit, committedIdentityEvidence } from "./ai-canvas-commit.mjs";
@@ -14,13 +15,7 @@ import {
 } from "./ai-mode-points-state.mjs";
 
 async function waitFor(check, timeoutMs, label, intervalMs = 250) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const value = await check();
-    if (value) return value;
-    await new Promise((resolve) => setTimeout(resolve, intervalMs));
-  }
-  throw new Error(`${label}等待超时`);
+  return pollUntil(check, { timeoutMs, intervalMs, message: `${label}等待超时` });
 }
 
 async function modeMarkers(scope, headings) {
@@ -242,7 +237,9 @@ export class AiModePointsAutomation {
       this.base.aiConfig.generationMode = record.mode_label;
       await this.base.selectGenerationMode(frame);
       const selected = await frame.locator(this.config.selectors.aiTierTriggerSelector).innerText();
-      if (!selected.includes(record.mode_label)) throw new Error(`${record.mode_label} 未选中`);
+      const mode = this.config.ai.generationModes?.find(item => item.key === record.mode);
+      const acceptedLabels = [record.mode_label, mode?.label, ...(mode?.aliases ?? [])].filter(Boolean);
+      if (!acceptedLabels.some(label => selected.includes(label))) throw new Error(`${record.mode_label} 未选中`);
       const prompt = frame.locator(this.config.selectors.aiPromptSelector).first();
       await prompt.fill(record.original_prompt);
       const before = await this.points.read(frame);

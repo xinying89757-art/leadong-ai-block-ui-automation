@@ -67,8 +67,8 @@ async function run(config, command, options) {
   if (!options.apply) throw new Error(`${command} 会创建/应用 AI 区块，必须显式传 --apply`);
   const maxTypes = command === "poc" ? 1 : config.ai.blocksPerPage;
   const { context, page } = await launchEditorBrowser(config, {
-    headless: options.headless === true,
-    slowMo: 0,
+    ...(options.headless === true ? { headless: true } : {}),
+
     isolatedProfile: false,
   });
   try {
@@ -116,8 +116,8 @@ async function runRemaining(config, command, options) {
   const pages = config.ai.followupPages ?? [];
   if (pages.length === 0) throw new Error("配置中没有 AI 后续页面");
   const { context, page } = await launchEditorBrowser(config, {
-    headless: options.headless === true,
-    slowMo: 0,
+    ...(options.headless === true ? { headless: true } : {}),
+
     isolatedProfile: false,
   });
   const results = [];
@@ -253,8 +253,8 @@ async function lifecycleCommand(config, command, options) {
 async function runDetail(config, command, options) {
   if (!options.apply) throw new Error(`${command} 会修改并发布系统详情页，必须显式传 --apply`);
   const { context, page } = await launchEditorBrowser(config, {
-    headless: options.headless === true,
-    slowMo: 0,
+    ...(options.headless === true ? { headless: true } : {}),
+
     isolatedProfile: false,
   });
   const results = [];

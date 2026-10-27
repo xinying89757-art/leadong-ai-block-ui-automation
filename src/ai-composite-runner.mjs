@@ -164,8 +164,7 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
     let options = frame.locator("button.block-category-option");
     if (!await isVisible(options.first())) {
       await trigger.click();
-      const deadline = Date.now() + this.config.timeouts.actionMs;
-      while (Date.now() < deadline && !await isVisible(options.first())) await this.editor.page.waitForTimeout(100);
+      await options.first().waitFor({ state: "visible", timeout: this.config.timeouts.actionMs }).catch(() => {});
     }
     if (!await isVisible(options.first())) throw new Error("未打开 AI 区块类型菜单，无法选择复合区块");
 

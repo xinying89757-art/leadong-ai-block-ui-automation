@@ -1,3 +1,5 @@
+import { withTimeout } from "./wait-utils.mjs";
+
 /**
  * Optional Midscene.js locator fallback for controls that are difficult to
  * address through the page's custom Vue DOM.  Playwright remains responsible
@@ -35,10 +37,7 @@ export class MidsceneLocatorFallback {
     const started = Date.now();
     try {
       this.agent ??= await this.createAgent();
-      const result = await Promise.race([
-        this.agent.aiLocate(description),
-        new Promise((_, reject) => setTimeout(() => reject(new Error("Midscene 视觉定位超时")), this.options.midsceneTimeoutMs)),
-      ]);
+      const result = await withTimeout(this.agent.aiLocate(description), this.options.midsceneTimeoutMs, "Midscene 视觉定位超时");
       if (!result?.center || result.center.length < 2) {
         throw new Error("Midscene 未返回有效坐标");
       }

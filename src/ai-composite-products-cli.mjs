@@ -46,7 +46,7 @@ async function main(){
   try{
     await writeCompositeJson(activePath,{runId,stateFile:paths.state});
     const scoped=compositeProductsConfig(config,runId,paths.state);
-    const launched=await launchEditorBrowser(scoped,{headless:options.headless===true,isolatedProfile:false,slowMo:0});context=launched.context;
+    const launched=await launchEditorBrowser(scoped,{headless:options.headless===true,isolatedProfile:false});context=launched.context;
     const editor=new LeadongEditor(launched.page,scoped);await editor.goto();
     automation=new AiCompositeProductsAutomation(editor,scoped,new AiStateStore(paths.state),paths);
     const persistBase=automation.persist.bind(automation);

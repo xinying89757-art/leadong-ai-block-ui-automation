@@ -1,5 +1,7 @@
 import { chmod, mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
+import { leadongEnv, resolveProjectPath } from "./config.mjs";
+import { pollUntil } from "./wait-utils.mjs";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -15,8 +17,8 @@ function optionalProxy(value) {
 function authSettings(config) {
   const configured = config.auth ?? {};
   return {
-    configPath: env("BUG1004949_ADMIN_CONFIG", configured.configPath),
-    storageStatePath: env("UI_STORAGE_STATE", configured.storageStatePath),
+    configPath: leadongEnv("LEADONG_ADMIN_CONFIG", configured.configPath) ? resolveProjectPath(leadongEnv("LEADONG_ADMIN_CONFIG", configured.configPath)) : null,
+    storageStatePath: env("UI_STORAGE_STATE", configured.storageStatePath) ? resolveProjectPath(env("UI_STORAGE_STATE", configured.storageStatePath)) : null,
     adminUrl: env("UI_ADMIN_URL", configured.adminUrl),
     loginUrl: env("UI_ADMIN_LOGIN_URL", configured.loginUrl),
     proxy: optionalProxy(env("UI_PROXY", configured.proxy)),
@@ -31,16 +33,16 @@ export async function readAdminCredentials(config) {
     try {
       fileConfig = JSON.parse(await readFile(settings.configPath, "utf8"));
     } catch (error) {
-      if (!process.env.BUG1004949_ADMIN_ACCOUNT || !process.env.BUG1004949_ADMIN_PASSWORD) {
+      if (!leadongEnv("LEADONG_ADMIN_ACCOUNT") || !leadongEnv("LEADONG_ADMIN_PASSWORD")) {
         throw new Error(`无法读取管理员账号配置 ${settings.configPath}：${error.message}`);
       }
     }
   }
-  const account = env("BUG1004949_ADMIN_ACCOUNT", fileConfig.account);
-  const password = env("BUG1004949_ADMIN_PASSWORD", fileConfig.password);
+  const account = leadongEnv("LEADONG_ADMIN_ACCOUNT", fileConfig.account);
+  const password = leadongEnv("LEADONG_ADMIN_PASSWORD", fileConfig.password);
   if (!account || !password) {
     throw new Error(
-      "缺少管理员账号配置，请设置 BUG1004949_ADMIN_ACCOUNT/BUG1004949_ADMIN_PASSWORD，或提供外部 admin-login.json",
+      "缺少管理员账号配置，请设置 LEADONG_ADMIN_ACCOUNT/LEADONG_ADMIN_PASSWORD，或提供外部 admin-login.json",
     );
   }
   return { account, password };
@@ -81,6 +83,32 @@ export async function enterCloudPlatform(page) {
   }
 }
 
+export async function dismissBlockingModals(page) {
+  try {
+    const deadline = Date.now() + 5000;
+    const modalSelector = '[role="dialog"], .el-dialog, .modal, .modal-dialog, [class*="modal"]';
+    while (Date.now() < deadline) {
+      const modals = page.locator(modalSelector);
+      let dismissed = false;
+      for (let index = 0, count = await modals.count().catch(() => 0); index < count; index += 1) {
+        const modal = modals.nth(index);
+        if (!(await modal.isVisible().catch(() => false)) || !(await modal.locator("video").count().catch(() => 0))) continue;
+        const close = modal.locator('button[aria-label*="close" i], [aria-label*="关闭"], .el-dialog__close, .close, .modal-close, button.close').first();
+        if (await close.isVisible().catch(() => false)) await close.click({ timeout: 1000 }).catch(() => {});
+        else await page.keyboard.press("Escape").catch(() => {});
+        await pollUntil(async () => !(await modal.isVisible().catch(() => false)), {
+          timeoutMs: Math.min(1000, Math.max(1, deadline - Date.now())), intervalMs: 100,
+        }).catch(() => {});
+        dismissed = true;
+        break;
+      }
+      if (!dismissed) return;
+    }
+  } catch {
+    // This is a best-effort guard for transient landing-page video overlays.
+  }
+}
+
 export async function saveStorageState(context, config) {
   const statePath = authSettings(config).storageStatePath;
   if (!statePath) return "";
@@ -101,17 +129,26 @@ export async function automaticLogin(page, context, config) {
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
       await gotoAllowingRedirect(page, settings.loginUrl);
-      await page.locator("#loginName").fill(credentials.account);
-      await page.locator("#password").fill(credentials.password);
-      await page.locator("#loginSubmit").click();
+      const username = page.getByPlaceholder("用户名/邮箱/手机号码").first();
+      const password = page.getByPlaceholder("密码").first();
+      await (await isVisible(username) ? username : page.locator("#loginName")).fill(credentials.account);
+      const passwordField = await isVisible(password) ? password : page.locator("#password");
+      await passwordField.fill(credentials.password);
+      await passwordField.press("Enter").catch(() => {});
       await page.waitForLoadState("domcontentloaded", { timeout: DEFAULT_TIMEOUT_MS }).catch(() => {});
       await page.waitForTimeout(800);
+      if (await isLoginPage(page)) {
+        await page.locator("#loginSubmit").click();
+        await page.waitForLoadState("domcontentloaded", { timeout: DEFAULT_TIMEOUT_MS }).catch(() => {});
+      }
+      await dismissBlockingModals(page);
       await enterCloudPlatform(page);
       await gotoAllowingRedirect(page, settings.adminUrl);
       await page.waitForTimeout(800);
       if (await isLoginPage(page)) {
         throw new Error("登录后仍停留在登录页");
       }
+      await dismissBlockingModals(page);
       const statePath = await saveStorageState(context, config);
       return { attempt, statePath };
     } catch (error) {

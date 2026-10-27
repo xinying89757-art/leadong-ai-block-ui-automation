@@ -37,6 +37,7 @@ export function createModePointsState(config, runId) {
     records: config.ai.modePointRegression.modes.map((item) => ({
       mode: item.key,
       mode_label: item.label,
+      mode_aliases: [...(item.aliases ?? [])],
       type: config.ai.modePointRegression.type,
       heading: item.heading,
       original_prompt: `[runId=${runId},mode=${item.key}] ${modePrompt(item)}`,
@@ -73,7 +74,7 @@ export function assertModePointsState(state, config, runId) {
   const page = modePointsPage(config, runId);
   if (state.page.name !== page.name || state.page.path !== page.path || state.page.publicUrl !== page.publicUrl) throw new Error("点数专项测试页面与配置不匹配");
   const modes = config.ai.modePointRegression.modes;
-  if (state.records.length !== modes.length || state.records.some((record, index) => record.mode !== modes[index].key || record.expected_cost !== modes[index].expectedCost || record.heading !== modes[index].heading)) throw new Error("点数专项模式配置已变化，拒绝恢复");
+  if (state.records.length !== modes.length || state.records.some((record, index) => record.mode !== modes[index].key || record.mode_label !== modes[index].label || JSON.stringify(record.mode_aliases ?? []) !== JSON.stringify(modes[index].aliases ?? []) || record.expected_cost !== modes[index].expectedCost || record.heading !== modes[index].heading)) throw new Error("点数专项模式配置已变化，拒绝恢复");
 }
 
 export function measuredCost(before, after) {

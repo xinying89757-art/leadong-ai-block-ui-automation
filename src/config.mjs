@@ -5,22 +5,52 @@ import { fileURLToPath } from "node:url";
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
 export const projectRoot = path.resolve(sourceDir, "..");
 
-async function loadLocalEnvironment() {
-  let contents;
-  try {
-    contents = await readFile(path.join(projectRoot, ".env.local"), "utf8");
-  } catch (error) {
-    if (error.code === "ENOENT") return;
-    throw error;
+const settingAliases = {
+  LEADONG_ADMIN_ACCOUNT: ["AIBLOCK_ADMIN_ACCOUNT", "BUG1004949_ADMIN_ACCOUNT"],
+  LEADONG_ADMIN_PASSWORD: ["AIBLOCK_ADMIN_PASSWORD", "BUG1004949_ADMIN_PASSWORD"],
+  LEADONG_ADMIN_CONFIG: ["AIBLOCK_ADMIN_CONFIG", "BUG1004949_ADMIN_CONFIG"],
+  LEADONG_TEST_IMAGE: ["AIBLOCK_TEST_IMAGE"],
+  LEADONG_BROWSER_CHANNEL: ["AIBLOCK_BROWSER_CHANNEL"],
+  LEADONG_HEADLESS: ["AIBLOCK_HEADLESS"],
+  LEADONG_SLOW_MO: ["AIBLOCK_SLOW_MO", "AIBLOCK_SLOWMO"],
+  LEADONG_TEST_BROWSER_CHANNEL: ["AIBLOCK_TEST_BROWSER_CHANNEL"],
+};
+
+export function resolveSetting(name, fallback, env = process.env, { allowEmpty = false } = {}) {
+  const names = [name, ...(settingAliases[name] ?? [])];
+  for (const alias of names) {
+    const value = env[alias];
+    if (value !== undefined && (allowEmpty || value !== "")) return value;
   }
-  for (const line of contents.split(/\r?\n/)) {
-    const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
-    if (!match || process.env[match[1]] !== undefined) continue;
-    let value = match[2];
-    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+  return fallback;
+}
+
+export const leadongEnv = resolveSetting;
+
+export function parseLocalEnvironment(contents, env = process.env) {
+  for (const line of String(contents).split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const separator = trimmed.indexOf("=");
+    if (separator < 1) continue;
+    const key = trimmed.slice(0, separator).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || env[key] !== undefined) continue;
+    let value = trimmed.slice(separator + 1).trim();
+    if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
       value = value.slice(1, -1);
     }
-    process.env[match[1]] = value;
+    env[key] = value;
+  }
+  return env;
+}
+
+export async function loadLocalEnvironment(root = projectRoot, env = process.env) {
+  // Keep offline tests isolated from any real workstation-local configuration.
+  if (root === projectRoot && env === process.env && (process.argv.includes("--test") || process.env.NODE_TEST_CONTEXT)) return;
+  try {
+    parseLocalEnvironment(await readFile(path.resolve(root, ".env.local"), "utf8"), env);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
   }
 }
 
@@ -42,7 +72,7 @@ async function readJson(jsonPath) {
   return JSON.parse(await readFile(jsonPath, "utf8"));
 }
 
-function resolveProjectPath(value) {
+export function resolveProjectPath(value) {
   return path.isAbsolute(value) ? value : path.resolve(projectRoot, value);
 }
 
@@ -51,13 +81,13 @@ export async function loadConfig(overridePath = "config/run.json") {
   const defaults = await readJson(path.resolve(projectRoot, "config/default.json"));
   const override = overridePath ? await readJson(resolveProjectPath(overridePath)) : {};
   const config = deepMerge(defaults, override);
-  config.rankingWorkbook = resolveProjectPath(config.rankingWorkbook);
-  config.inputCsv = config.rankingWorkbook;
-  for (const key of ["userDataDir", "stateFile", "aiStateFile", "aiRemainingStateDir", "aiDetailStateDir", "aiLifecycleDir", "aiRegressionReportsDir", "artifactsDir", "reportsDir"]) {
-    config.paths[key] = resolveProjectPath(config.paths[key]);
+  for (const [key, value] of Object.entries(config.paths ?? {})) {
+    if (typeof value === "string" && value) config.paths[key] = resolveProjectPath(value);
   }
-  if (config.ai?.inputModeRegression?.imagePath) {
-    config.ai.inputModeRegression.imagePath = resolveProjectPath(config.ai.inputModeRegression.imagePath);
+  if (config.htmlUploadRegression?.filePath) config.htmlUploadRegression.filePath = resolveProjectPath(config.htmlUploadRegression.filePath);
+  const testImagePath = resolveSetting("LEADONG_TEST_IMAGE", config.ai?.inputModeRegression?.imagePath);
+  if (testImagePath) {
+    config.ai.inputModeRegression.imagePath = resolveProjectPath(testImagePath);
   }
   if (config.auth?.configPath) {
     config.auth.configPath = resolveProjectPath(config.auth.configPath);
@@ -69,18 +99,23 @@ export async function loadConfig(overridePath = "config/run.json") {
     throw new Error("blocksPerPage 必须是大于0的整数");
   }
   validateAiConfig(config.ai);
+  if (!generationModeConfig(config.ai, config.ai.generationMode)) throw new Error("ai.generationMode 必须匹配 ai.generationModes");
+  validateGenerationModes(config.ai.generationModes);
+  config.ai.modePointRegression.modes = config.ai.generationModes.map((item) => ({ ...item }));
+  config.ai.inputModeRegression.expectedCost = generationModeConfig(config.ai, config.ai.inputModeRegression.generationMode)?.expectedCost ?? config.ai.inputModeRegression.expectedCost;
   validateModePointConfig(config.ai.modePointRegression);
-  validateInputModeRegression(config.ai.inputModeRegression);
-  validateFullPageRegression(config.ai.fullPageRegression);
-  validateHistoryReuseRegression(config.ai.historyReuseRegression);
-  validateProductFilterRegression(config.ai.productFilterRegression);
-  validateProductListSettingsRegression(config.ai.productListSettingsRegression);
-  validateArticleListSettingsRegression(config.ai.articleListSettingsRegression);
-  validateNavigationRegression(config.ai.navigationRegression);
-  validateImageGalleryRegression(config.ai.imageGalleryRegression);
-  validateCompositeRegression(config.ai.compositeRegression);
+  validateInputModeRegression(config.ai.inputModeRegression, config.ai.generationModes);
+  validateFullPageRegression(config.ai.fullPageRegression, config.ai.generationModes);
+  validateHistoryReuseRegression(config.ai.historyReuseRegression, config.ai.generationModes);
+  validateProductFilterRegression(config.ai.productFilterRegression, config.ai.generationModes);
+  validateProductListSettingsRegression(config.ai.productListSettingsRegression, config.ai.generationModes);
+  validateArticleListSettingsRegression(config.ai.articleListSettingsRegression, config.ai.generationModes);
+  validateNavigationRegression(config.ai.navigationRegression, config.ai.generationModes);
+  validateImageGalleryRegression(config.ai.imageGalleryRegression, config.ai.generationModes);
+  validateCompositeRegression(config.ai.compositeRegression, config.ai.generationModes);
+  if (!generationModeConfig(config.ai, config.ai.compositeRegression?.generationMode)) throw new Error("复合区块专项 generationMode 必须匹配 ai.generationModes");
   validateRegressionSuite(config.ai);
-  for (const key of ["rankingWorkbook", "rankingSheetName", "editorUrl", "siteName", "siteLanguage", "publicBaseUrl"]) {
+  for (const key of ["editorUrl", "siteName", "siteLanguage", "publicBaseUrl"]) {
     if (!config[key]) throw new Error(`配置缺少 ${key}`);
   }
   new URL(config.publicBaseUrl);
@@ -199,6 +234,29 @@ export function validateRegressionSuite(ai) {
   return suite;
 }
 
+export function validateGenerationModes(modes) {
+  if (!Array.isArray(modes) || modes.length < 1) throw new Error("ai.generationModes 必须至少包含一种模式");
+  const keys = new Set();
+  const labels = new Set();
+  for (const item of modes) {
+    if (!item || typeof item.key !== "string" || !item.key.trim() || keys.has(item.key)) throw new Error("ai.generationModes.key 必须非空且唯一");
+    if (typeof item.label !== "string" || !item.label.trim() || labels.has(item.label)) throw new Error("ai.generationModes.label 必须非空且唯一");
+    if (!Number.isInteger(item.expectedCost) || item.expectedCost <= 0) throw new Error(`ai.generationModes.${item.key}.expectedCost 必须为正整数`);
+    if (item.aliases !== undefined && (!Array.isArray(item.aliases) || item.aliases.some(alias => typeof alias !== "string" || !alias.trim()))) throw new Error(`ai.generationModes.${item.key}.aliases 无效`);
+    keys.add(item.key); labels.add(item.label);
+  }
+  return modes;
+}
+
+export function generationModeConfig(ai, labelOrAlias) {
+  return ai?.generationModes?.find(item => item.label === labelOrAlias || item.aliases?.includes(labelOrAlias));
+}
+
+function matchesGenerationMode(modes, labelOrAlias, key = "quick") {
+  const mode = modes.find(item => item.key === key);
+  return Boolean(mode && (mode.label === labelOrAlias || mode.aliases?.includes(labelOrAlias)));
+}
+
 export function validateModePointConfig(mode) {
   if (!mode?.enabled) return mode;
   for (const key of ["type", "inputMode", "pageNamePrefix", "pagePathPrefix"]) {
@@ -207,13 +265,12 @@ export function validateModePointConfig(mode) {
   if (mode.promptPolishEnabled !== false) throw new Error("点数专项必须关闭提示词润色");
   if (!Number.isInteger(mode.blocksPerPage) || mode.blocksPerPage !== 3) throw new Error("点数专项必须配置三个区块");
   if (!Array.isArray(mode.modes) || mode.modes.length !== mode.blocksPerPage) throw new Error("点数专项模式数量无效");
-  const expected = [["quick", "快速模式", 6], ["advanced", "进阶模式", 10], ["deep", "深度模式", 20]];
   const headings = new Set();
-  mode.modes.forEach((item, index) => {
-    const [key, label, cost] = expected[index];
-    if (item.key !== key || item.label !== label || item.expectedCost !== cost) throw new Error(`点数专项第 ${index + 1} 个模式配置无效`);
+  const keys = new Set();
+  mode.modes.forEach((item) => {
+    if (typeof item.key !== "string" || !item.key.trim() || keys.has(item.key) || typeof item.label !== "string" || !item.label.trim() || !Number.isInteger(item.expectedCost) || item.expectedCost <= 0) throw new Error("点数专项模式配置无效");
     if (typeof item.heading !== "string" || !item.heading.includes("Static Text") || headings.has(item.heading)) throw new Error("点数专项标题缺失或重复");
-    headings.add(item.heading);
+    keys.add(item.key); headings.add(item.heading);
   });
   for (const key of ["pointsPollIntervalMs", "pointsTimeoutMs", "generationTimeoutMs", "generationStatusRefreshIntervalMs"]) {
     if (!Number.isInteger(mode[key]) || mode[key] < 1) throw new Error(`modePointRegression.${key} 必须为正整数`);
@@ -221,14 +278,15 @@ export function validateModePointConfig(mode) {
   return mode;
 }
 
-export function validateInputModeRegression(mode) {
+export function validateInputModeRegression(mode, generationModes = DEFAULT_GENERATION_MODES) {
   if (!mode?.enabled) return mode;
   for (const key of ["type", "generationMode", "pageNamePrefix", "pagePathPrefix", "imagePath", "referenceUrl"]) {
     if (typeof mode[key] !== "string" || !mode[key].trim()) throw new Error(`inputModeRegression.${key} 不能为空`);
   }
   if (mode.promptPolishEnabled !== false) throw new Error("输入方式专项必须关闭提示词润色");
   if (!Number.isInteger(mode.blocksPerPage) || mode.blocksPerPage !== 3) throw new Error("输入方式专项必须配置三个区块");
-  if (!Number.isInteger(mode.expectedCost) || mode.expectedCost !== 6) throw new Error("输入方式专项快速模式预期扣点必须为 6");
+  if (!matchesGenerationMode(generationModes, mode.generationMode)) throw new Error("输入方式专项目前只支持配置中的快速模式");
+  if (!Number.isInteger(mode.expectedCost) || mode.expectedCost <= 0) throw new Error("输入方式专项 expectedCost 必须为正整数");
   try {
     const url = new URL(mode.referenceUrl);
     if (url.protocol !== "https:") throw new Error("参考网址必须使用 HTTPS");
@@ -251,12 +309,14 @@ export function validateInputModeRegression(mode) {
   return mode;
 }
 
-export function validateFullPageRegression(mode) {
+const DEFAULT_GENERATION_MODES = [{ key: "quick", label: "快速模式", aliases: [] }, { key: "advanced", label: "进阶模式", aliases: ["高级模式"] }, { key: "deep", label: "深度模式", aliases: [] }];
+
+export function validateFullPageRegression(mode, generationModes = DEFAULT_GENERATION_MODES) {
   if (!mode?.enabled) return mode;
   for (const key of ["inputMode", "generationMode", "pageNamePrefix", "pagePathPrefix"]) {
     if (typeof mode[key] !== "string" || !mode[key].trim()) throw new Error(`fullPageRegression.${key} 不能为空`);
   }
-  if (mode.inputMode !== "文字描述" || mode.generationMode !== "快速模式") {
+  if (mode.inputMode !== "文字描述" || !matchesGenerationMode(generationModes, mode.generationMode)) {
     throw new Error("整页专项目前只支持文字描述和快速模式");
   }
   if (mode.promptPolishEnabled !== false) throw new Error("整页专项必须关闭提示词润色");
@@ -301,7 +361,7 @@ function validateApplicationWait(mode, prefix) {
   if (mode.applicationStableMs >= mode.applicationTimeoutMs) throw new Error(`${prefix} 稳定窗口必须小于添加等待超时`);
 }
 
-export function validateHistoryReuseRegression(mode) {
+export function validateHistoryReuseRegression(mode, generationModes = DEFAULT_GENERATION_MODES) {
   if (!mode?.enabled) return mode;
   for (const key of [
     "inputMode",
@@ -316,7 +376,7 @@ export function validateHistoryReuseRegression(mode) {
       throw new Error(`historyReuseRegression.${key} 不能为空`);
     }
   }
-  if (mode.inputMode !== "文字描述" || mode.generationMode !== "快速模式") {
+  if (mode.inputMode !== "文字描述" || !matchesGenerationMode(generationModes, mode.generationMode)) {
     throw new Error("生成记录复用专项目前只支持文字描述和快速模式");
   }
   if (mode.blockType !== "静态图文") throw new Error("生成记录复用专项的区块类型必须为静态图文");
@@ -353,7 +413,7 @@ export function validateHistoryReuseRegression(mode) {
   return mode;
 }
 
-export function validateProductFilterRegression(mode) {
+export function validateProductFilterRegression(mode, generationModes = DEFAULT_GENERATION_MODES) {
   if (!mode?.enabled) return mode;
   for (const key of ["type", "inputMode", "generationMode", "pageName", "pagePath", "prompt"]) {
     if (typeof mode[key] !== "string" || !mode[key].trim()) {
@@ -361,7 +421,7 @@ export function validateProductFilterRegression(mode) {
     }
   }
   if (mode.type !== "产品筛选") throw new Error("产品筛选专项类型必须为产品筛选");
-  if (mode.inputMode !== "文字描述" || mode.generationMode !== "快速模式") {
+  if (mode.inputMode !== "文字描述" || !matchesGenerationMode(generationModes, mode.generationMode)) {
     throw new Error("产品筛选专项目前只支持文字描述和快速模式");
   }
   if (!mode.pagePath.startsWith("/")) throw new Error("productFilterRegression.pagePath 必须以 / 开头");
@@ -381,7 +441,7 @@ export function validateProductFilterRegression(mode) {
   return mode;
 }
 
-export function validateProductListSettingsRegression(mode) {
+export function validateProductListSettingsRegression(mode, generationModes = DEFAULT_GENERATION_MODES) {
   if (!mode?.enabled) return mode;
   for (const key of ["type", "inputMode", "generationMode", "pageNamePrefix", "pagePathPrefix", "prompt"]) {
     if (typeof mode[key] !== "string" || !mode[key].trim()) {
@@ -389,7 +449,7 @@ export function validateProductListSettingsRegression(mode) {
     }
   }
   if (mode.type !== "产品列表") throw new Error("产品列表设置专项类型必须为产品列表");
-  if (mode.inputMode !== "文字描述" || mode.generationMode !== "快速模式") {
+  if (mode.inputMode !== "文字描述" || !matchesGenerationMode(generationModes, mode.generationMode)) {
     throw new Error("产品列表设置专项目前只支持文字描述和快速模式");
   }
   if (mode.promptPolishEnabled !== true) throw new Error("产品列表设置专项必须启用提示词润色");
@@ -432,13 +492,13 @@ export function validateProductListSettingsRegression(mode) {
   return mode;
 }
 
-export function validateArticleListSettingsRegression(mode) {
+export function validateArticleListSettingsRegression(mode, generationModes = DEFAULT_GENERATION_MODES) {
   if (!mode?.enabled) return mode;
   for (const key of ["type", "inputMode", "generationMode", "pageNamePrefix", "pagePathPrefix", "prompt", "articleSortLabel"]) {
     if (typeof mode[key] !== "string" || !mode[key].trim()) throw new Error(`articleListSettingsRegression.${key} 不能为空`);
   }
   if (mode.type !== "文章列表") throw new Error("文章列表设置专项类型必须为文章列表");
-  if (mode.inputMode !== "文字描述" || mode.generationMode !== "快速模式") throw new Error("文章列表设置专项目前只支持文字描述和快速模式");
+  if (mode.inputMode !== "文字描述" || !matchesGenerationMode(generationModes, mode.generationMode)) throw new Error("文章列表设置专项目前只支持文字描述和快速模式");
   if (mode.promptPolishEnabled !== true) throw new Error("文章列表设置专项必须启用提示词润色");
   if (!Number.isInteger(mode.expectedPageSize) || mode.expectedPageSize !== 5) throw new Error("文章列表结果级专项每页数量必须设置为 5");
   if (!Number.isInteger(mode.blocksPerPage) || mode.blocksPerPage !== 1) throw new Error("文章列表设置专项必须配置一个区块");
@@ -451,7 +511,7 @@ export function validateArticleListSettingsRegression(mode) {
   return mode;
 }
 
-export function validateNavigationRegression(mode) {
+export function validateNavigationRegression(mode, generationModes = DEFAULT_GENERATION_MODES) {
   if (!mode?.enabled) return mode;
   for (const key of ["type", "inputMode", "generationMode", "pageName", "pagePath", "prompt"]) {
     if (typeof mode[key] !== "string" || !mode[key].trim()) {
@@ -461,7 +521,7 @@ export function validateNavigationRegression(mode) {
   if (mode.type !== "导航") throw new Error("导航专项类型必须为导航");
   if (mode.pageName !== "AI区块类型回归-005") throw new Error("导航专项页面名称必须为 AI区块类型回归-005");
   if (mode.pagePath !== "/ai-block-type-regression-005") throw new Error("导航专项页面路径必须为 /ai-block-type-regression-005");
-  if (mode.inputMode !== "文字描述" || mode.generationMode !== "快速模式") {
+  if (mode.inputMode !== "文字描述" || !matchesGenerationMode(generationModes, mode.generationMode)) {
     throw new Error("导航专项目前只支持文字描述和快速模式");
   }
   if (!mode.pagePath.startsWith("/") || mode.pagePath.includes("?")) {
@@ -482,7 +542,7 @@ export function validateNavigationRegression(mode) {
   return mode;
 }
 
-export function validateImageGalleryRegression(mode) {
+export function validateImageGalleryRegression(mode, generationModes = DEFAULT_GENERATION_MODES) {
   if (!mode?.enabled) return mode;
   for (const key of ["type", "inputMode", "generationMode", "pageNamePrefix", "pagePathPrefix", "prompt"]) {
     if (typeof mode[key] !== "string" || !mode[key].trim()) {
@@ -490,7 +550,7 @@ export function validateImageGalleryRegression(mode) {
     }
   }
   if (mode.type !== "图片集") throw new Error("图片集专项类型必须为图片集，不能映射到图册列表");
-  if (mode.inputMode !== "文字描述" || mode.generationMode !== "快速模式") {
+  if (mode.inputMode !== "文字描述" || !matchesGenerationMode(generationModes, mode.generationMode)) {
     throw new Error("图片集专项目前只支持文字描述和快速模式");
   }
   if (typeof mode.promptPolishEnabled !== "boolean") throw new Error("imageGalleryRegression.promptPolishEnabled 必须是布尔值");
@@ -512,14 +572,14 @@ export function validateImageGalleryRegression(mode) {
   return mode;
 }
 
-export function validateCompositeRegression(mode) {
+export function validateCompositeRegression(mode, generationModes = DEFAULT_GENERATION_MODES) {
   if (!mode?.enabled) return mode;
   for (const key of ["type", "staticType", "inputMode", "generationMode", "pageNamePrefix", "pagePathPrefix", "prompt"]) {
     if (typeof mode[key] !== "string" || !mode[key].trim()) throw new Error(`compositeRegression.${key} 不能为空`);
   }
   if (mode.type !== "复合区块") throw new Error("复合区块专项类型必须为复合区块");
   if (mode.staticType !== "静态图文") throw new Error("复合区块专项静态布局必须为静态图文");
-  if (mode.inputMode !== "文字描述" || !["快速模式", "进阶模式", "深度模式"].includes(mode.generationMode)) {
+  if (mode.inputMode !== "文字描述" || !generationModes.some(item => item.label === mode.generationMode || item.aliases?.includes(mode.generationMode))) {
     throw new Error("复合区块专项目前只支持文字描述及快速、进阶或深度模式");
   }
   if (typeof mode.promptPolishEnabled !== "boolean") throw new Error("compositeRegression.promptPolishEnabled 必须是布尔值");
@@ -548,16 +608,6 @@ export function validateCompositeRegression(mode) {
     for (const key of ['interactionTimeoutMs', 'stableMs']) if (!Number.isInteger(linkage[key]) || linkage[key] <= 0) throw new Error(`分类联动 ${key} 必须为正整数`);
   }
   return mode;
-}
-
-export function pageDescriptor(config, pageNumber) {
-  const suffix = String(pageNumber).padStart(3, "0");
-  return {
-    number: pageNumber,
-    name: `${config.pageNamePrefix}${suffix}`,
-    path: `/${config.pagePathPrefix}${suffix}`,
-    publicUrl: new URL(`/${config.pagePathPrefix}${suffix}`, config.publicBaseUrl).toString(),
-  };
 }
 
 export function aiPageDescriptor(config, pageNumber = 1) {

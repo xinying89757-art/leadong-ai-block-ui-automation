@@ -1,3 +1,4 @@
+import { pollUntil } from "./wait-utils.mjs";
 import path from 'node:path';
 import { mkdir } from 'node:fs/promises';
 import { DetailContentBrowser } from './ai-detail-content.mjs';
@@ -7,11 +8,8 @@ const norm=value=>String(value||'').normalize('NFKC').replace(/\s+/g,' ').trim()
 const GROUP='[data-block-uuid="ai-groupProduct"]';
 const LIST='[data-block-uuid="ai-productlist"]';
 
-async function waitUntil(check,timeout,label){
-  const end=Date.now()+timeout;let last;
-  while(Date.now()<end){try{const value=await check();if(value)return value;}catch(e){last=e;}
-    await new Promise(r=>setTimeout(r,300));}
-  throw new Error(`${label}等待超时${last?`：${last.message}`:''}`);
+async function waitUntil(check, timeout, label) {
+  return pollUntil(check, { timeoutMs: timeout, intervalMs: 300, message: `${label}等待超时`, retryOnError: true });
 }
 
 export function categoryProducts(catalog,categoryName){

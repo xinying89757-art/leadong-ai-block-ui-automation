@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { chromium } from "playwright";
+import { browserLaunchOptions } from "../src/browser-options.mjs";
 import { buildRegressionHtml, writeRegressionReport } from "../src/ai-regression-report.mjs";
 import { readableCheck } from "../src/ai-regression-report-view.mjs";
 
@@ -16,13 +17,11 @@ const latest = path.resolve("reports/ai-regression/latest.html");
 const out = path.resolve("output/playwright");
 const temp = await mkdtemp(path.join(os.tmpdir(), "ai-report-ui-"));
 await mkdir(out, { recursive: true });
-const browser = await chromium.launch({ channel: "chrome", headless: false });
+let browser;
+let context;
+let page;
 const errors = [];
 const remoteRequests = [];
-const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-await context.route(/^https?:\/\//, (route) => { remoteRequests.push(route.request().url()); return route.abort(); });
-const page = await context.newPage();
-page.on("pageerror", (error) => errors.push(error.message));
 
 async function screenshotInteractions(file) {
   await page.goto(pathToFileURL(file).href);
@@ -59,6 +58,11 @@ async function verifyCorruptDataUrl() {
 }
 
 try {
+  browser = await chromium.launch(browserLaunchOptions({ browser: { channel: "chrome", headless: false } }));
+  context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  await context.route(/^https?:\/\//, (route) => { remoteRequests.push(route.request().url()); return route.abort(); });
+  page = await context.newPage();
+  page.on("pageerror", (error) => errors.push(error.message));
   if (fixtureOnly) {
     // A generated in-memory fixture, not a workaround to read any local page.
     const pixels = await page.screenshot();
@@ -135,6 +139,6 @@ try {
   console.log(JSON.stringify({ ok: true, headed: true, offline: true, report, embeddedScreenshots: count, zoomAndClose: true, escapeClose: true, latestAndCopiedReport: true, largeMissingCorruptImages: true, mobileLayout: true, screenshotDir: out }, null, 2));
   }
 } finally {
-  await browser.close();
+  await browser?.close().catch(() => {});
   await rm(temp, { recursive: true, force: true });
 }

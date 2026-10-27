@@ -13,7 +13,7 @@ async function firstVisible(locator) {
 }
 
 const config = await loadConfig("config/run.json");
-const { context, page } = await launchEditorBrowser(config, { headless: false, slowMo: 0 });
+const { context, page } = await launchEditorBrowser(config, { headless: false });
 const network = [];
 const onResponse = async (response) => {
   if (!response.url().includes("/copilot-ai-api/")) return;

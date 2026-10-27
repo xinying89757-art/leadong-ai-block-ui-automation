@@ -63,7 +63,7 @@ async function main() {
   let context, editor, automation;
   try {
     await persist();
-    const browser = await launchEditorBrowser(config,{headless:options.headless===true,isolatedProfile:false,slowMo:0});
+    const browser = await launchEditorBrowser(config,{headless:options.headless===true,isolatedProfile:false});
     context=browser.context; editor=new LeadongEditor(browser.page,config);
     await editor.goto(); await editor.waitForCanvasReady();
     state.page.publicUrl=new URL(state.page.path,config.publicBaseUrl).href;
