@@ -61,6 +61,8 @@ npx playwright install chromium
 | `LEADONG_HEADLESS` | 覆盖显示模式，接受 `true`/`false` 或 `1`/`0`；未设置时 CI 默认 headless，非 CI 沿用配置 |
 | `LEADONG_SLOW_MO` | 覆盖 Playwright 操作延迟，单位毫秒，必须为非负整数；旧 `AIBLOCK_SLOWMO` 也可作为后备 |
 
+如果 Linux/CI 环境禁止出站 TCP 80，预览入口可能从 HTTPS 重定向到 HTTP 并超时。这是环境限制。可选 workaround：`LEADONG_HTTPS_UPGRADE_HOSTS=website.leadong.com npm run ai:modify -- --run-id linux-preview-01`。`network.httpsUpgradeHosts` 默认 `[]`，环境变量接受逗号分隔的精确主机名（空值关闭）。启用后预览目标先升级到 HTTPS，context 路由将指定主机的 HTTP 请求通过 HTTPS 代理，并升级响应 Location；方法、请求头、请求体和响应状态/内容保持一致，覆盖 iframe 和 popup。未指定时 macOS 行为不变。HTTP 导航超时报告为 `preview_status: blocked-environment`，仍不算通过。若 HTTPS 端强制跳回相同 HTTP 地址，runner 会检测该循环并记录环境阻塞；shim 要求实际目标能够通过 HTTPS 提供内容。
+
 ## 启用 CI
 
 CI 工作流模板位于 `ci/github-actions/offline-tests.yml`。启用时将其复制到 GitHub Actions 识别的目录：
@@ -108,3 +110,105 @@ npm run page:html-upload
 所有配置中的本地文件、状态和输出路径以仓库根目录解析，绝对路径保持原样。
 
 AI 生成模式与预期点数由 `ai.generationModes` 统一配置：快速模式 6 点、进阶模式 15 点（接受旧称“高级模式”）、深度模式 30 点。
+
+### Existing AI block modification and result actions
+
+Both flows use headless Chromium and create isolated, unpublished regression pages. Local credentials are loaded by `loadConfig()`; do not inspect the session directory or print credentials.
+
+```sh
+npm run ai:modify -- --run-id modify-example
+npm run ai:modify:resume -- --run-id modify-example
+npm run ai:modify:status -- --run-id modify-example
+npm run ai:modify:cleanup -- --run-id modify-example --apply
+
+npm run ai:result-actions -- --run-id result-actions-example
+npm run ai:result-actions:resume -- --run-id result-actions-example
+npm run ai:result-actions:status -- --run-id result-actions-example
+npm run ai:result-actions:cleanup -- --run-id result-actions-example --apply
+```
+
+The underlying CLI requires `--apply` for run, resume and cleanup. Run IDs are validated and cannot be reused. With no ID, status/resume/cleanup use the flow's active-run pointer. State lives under `.state/ai-lifecycle/runs/<runId>/ai-<flow>/`; JSON/Markdown reports and screenshots live under `reports/ai-<flow>/<runId>/`.
+
+`ai.modifyRegression.modes` defaults to `["quick", "advanced"]`; add `"deep"` to exercise deep modification. Costs come from `ai.generationModes`. The seed is always a quick static image/text block. Each modification must replace the heading inside the owned committed block and appear in preview.
+
+`ai.resultActionsRegression.mode` defaults to `"quick"`. Separate generations on independently recorded test pages exercise prompt preservation, regeneration with history and credit checks, direct application, and both changed-content exit branches. A failed commit is isolated while the remaining independent cases run. The commit barrier excludes temporary AI canvases and requires a stable count increase of exactly one, the generated heading and a cleared overlay. Both applied blocks are checked in preview. Cleanup requires a matching creation receipt and page identity and deletes only that run's page; neither flow publishes.
+
+A run exits unsuccessfully when an application or preview assertion fails. A completed history record is never enough to mark application successful. Modification can recover its own completed history record in the same modification context; the report records blank/disabled result observations. Preview is loaded from the editor’s own preview link in a separate tab, and its endpoint must return the expected heading. No publish fallback is used.
+
+## 生成历史（Flow 3）
+
+`ai:history` 在独立 `AI生成历史回归-<runId>` 页面生成一个快速模式区块，检查生成记录徽标 +1、全部分页记录的时间倒序、状态/输入方式/模式/类型/点数徽标，以及自己的完成记录「＋插入」后的画布标题与零额外扣点。若历史中有真实的可恢复组合失败记录，则在测试页面中执行「继续生成」，保持任务界面打开，检查进度/状态/结果并记录实际扣点；未得到可用结果或可观察终态的超时仍记失败；没有可用失败记录时明确标记 skipped，不伪造失败。不会发布。
+
+```sh
+LEADONG_HTTPS_UPGRADE_HOSTS=website.leadong.com npm run ai:history -- --run-id history-example
+npm run ai:history:resume -- --run-id history-example
+npm run ai:history:status -- --run-id history-example
+npm run ai:history:cleanup -- --run-id history-example --apply
+```
+
+配置为 `ai.historyRegression`。run/resume/cleanup 必须 `--apply`（前两者的 npm 脚本已包含）。状态和创建回执记录在 lifecycle 目录，JSON/Markdown 与截图在 `reports/ai-history/<runId>/`。恢复只读取/使用已提交的记录，不重复提交已扣点生成；应用状态不确定时先检查画布。cleanup 只删除该 run 的精确归属页面。
+
+## 输入校验与积分（Flow 5）
+
+`ai:validation` 在独立 `AI输入校验回归-<runId>` 页面检查空提示词、GIF/BMP、超过 5 MiB 的 PNG、有效 PNG 和三个无效网址。拒绝场景必须有错误信息或禁用生成/拒绝文件的证据，同时积分和历史总数不变。有效 PNG 只验证接受，不生成。最后只用文字描述生成一次快速模式区块，核对设置面板实际扣 6 点，并在「查看使用记录」中按时间、使用类型和点数匹配唯一记录。不会发布。
+
+```sh
+LEADONG_HTTPS_UPGRADE_HOSTS=website.leadong.com npm run ai:validation -- --run-id validation-example
+npm run ai:validation:resume -- --run-id validation-example
+npm run ai:validation:status -- --run-id validation-example
+npm run ai:validation:cleanup -- --run-id validation-example --apply
+```
+
+配置为 `ai.validationRegression`；积分场景固定快速模式。小型真实 GIF/BMP 在 `fixtures/validation/`；有效 PNG 在 `fixtures/images/test-image.png`；大 PNG 运行时生成到 gitignored `tmp/validation/<runId>/`。状态、创建回执、断点和报告遵循其它新流程模式，报告在 `reports/ai-validation/<runId>/`。如果无效输入意外触发生成，记录真实失败及扣点/历史证据；恢复不会重做这笔意外生成。run/resume/cleanup 有 `--apply` 保护。
+
+本箱实测「查看使用记录」使用的裸域 `leadong.com` 查看器返回 403，而相同路径在已登录的编辑器域 `website.leadong.com` 返回 200。可选配置 `ai.validationRegression.usageRecordsFallbackHost: "website.leadong.com"`（默认空字符串，关闭）：只在该已知 HTTPS 查看器路径返回 403 时切换到编辑器域，保留路径、查询及前端路由。报告同时保留原始 403 和实际使用记录截图；这不代表原始入口正常。可将该字段写入独立运行配置，通过 `--config` 使用；不需要修改 `.env.local`。
+
+## AI 区块新增流程
+
+需要 Node.js 20+、`npm ci`、`npx playwright install chromium` 和有权限的测试站点账号。先按“安装与配置”创建本地 `.env.local` 并填写管理员账号密码。命令通过 `--` 将后续参数传给流程 CLI；每次 `run` 使用新的 `--run-id`。这些流程会在真实站点生成内容并消耗积分，但不会发布。
+
+```sh
+npm run ai:modify -- --run-id modify-local-01
+npm run ai:modify:status -- --run-id modify-local-01
+npm run ai:modify:resume -- --run-id modify-local-01
+npm run ai:modify:cleanup -- --run-id modify-local-01 --apply
+
+npm run ai:result-actions -- --run-id result-actions-local-01
+npm run ai:result-actions:status -- --run-id result-actions-local-01
+npm run ai:result-actions:resume -- --run-id result-actions-local-01
+npm run ai:result-actions:cleanup -- --run-id result-actions-local-01 --apply
+
+npm run ai:history -- --run-id history-local-01
+npm run ai:history:status -- --run-id history-local-01
+npm run ai:history:resume -- --run-id history-local-01
+npm run ai:history:cleanup -- --run-id history-local-01 --apply
+
+npm run ai:validation -- --run-id validation-local-01
+npm run ai:validation:status -- --run-id validation-local-01
+npm run ai:validation:resume -- --run-id validation-local-01
+npm run ai:validation:cleanup -- --run-id validation-local-01 --apply
+
+npm run ai:combo -- --combo product_pair --mode quick --run-id combo-product-local-01
+npm run ai:combo:status -- --combo product_pair --run-id combo-product-local-01
+npm run ai:combo:resume -- --combo product_pair --mode quick --run-id combo-product-local-01
+npm run ai:combo:cleanup -- --combo product_pair --run-id combo-product-local-01
+```
+
+`ai:combo` 的 `--combo` 可选 `product_pair`、`article_pair`、`three_type`、`video_pair`、`gallery_pair`、`download_pair`、`faq_pair`，`--mode` 可选 `quick`、`advanced`、`deep`。含分类的组合在对应系统页面运行：产品组合/产品分类使用 `Products`，文章分类使用 `News`；视频、图册、下载和 FAQ 分类使用配置中各自对应的系统页。系统页流程先记录区块 ID 和顺序快照，完成后只移除本次凭据确认的自有区块，保存、重载并核对页面恢复到快照；cleanup 同样只移除自有区块，绝不删除系统页或既有内容。其他四个流程使用各自归属的自定义测试页。
+
+提示词只写组合名称（如“视频列表和视频分类”），先点“润色”再以快速模式生成。新增四组：`video_pair`（视频列表+视频分类，`Video List` 系统页）、`gallery_pair`（图册列表+图册分类，`Gallery`）、`download_pair`（下载列表+下载分类，`Download`）、`faq_pair`（FAQ 列表+FAQ 分类，`FAQ`）。组合生成常超过 10 分钟，组合流程等待上限为 20 分钟；若到达上限时平台仍显示生成中，可用 `:resume` 读取历史记录：已完成则直接插入并校验（不重新生成），平台「组合操作失败」则最多点 1 次“继续生成”。可用 `node src/ai-combo-cli.mjs inspect --combo <id> --run-id <runId>` 只读查看该轮历史记录和页面快照。
+
+Phase H（2026-10-26，各跑 2 次，快速模式）结果：
+
+| 组合 | 系统页 | 通过/运行 | 「组合操作失败」 | 备注 |
+|---|---|---|---|---|
+| video_pair | Video List | 1/2 | 1 | H-02 生成完成后因 AI 弹窗加载遮罩卡住（测试侧，已修复），resume 后通过 |
+| gallery_pair | Gallery | 0/2 | 2 | 均为平台失败，0 点 |
+| download_pair | Download | 1/2 | 1 | H-02 生成超过 20 分钟，resume 后通过 |
+| faq_pair | FAQ | 1/2 | 1 | H-02 生成超过 20 分钟，resume 后通过 |
+
+所有运行结束后四个系统页区块快照与运行前一致（均为空）。运行报告写入本地 `reports/ai-combo/<runId>/`（不入库）。
+
+`run`、`resume` 和 `cleanup` 需要 `--apply`；run/resume 的 npm 脚本已包含该开关，cleanup 命令也已包含。查看本地断点可执行对应 `:status`；中断后用相同 run ID 调用 `:resume`。可使用 `npm test` 运行离线测试。
+
+状态自动写入 `.state/`，报告及截图写入 `reports/`，临时验证图片写入 `tmp/`；这些目录按需创建并由 Git 忽略。当前自动化箱无法访问 TCP 80，预览会显示 `preview_status: blocked-environment`，不代表区块断言失败。若本机网络允许访问预览地址，可在报告中单独验证预览结果。

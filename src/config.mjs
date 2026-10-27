@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { httpsUpgradeHosts } from "./network-https-upgrade.mjs";
+
 const sourceDir = path.dirname(fileURLToPath(import.meta.url));
 export const projectRoot = path.resolve(sourceDir, "..");
 
@@ -81,6 +83,7 @@ export async function loadConfig(overridePath = "config/run.json") {
   const defaults = await readJson(path.resolve(projectRoot, "config/default.json"));
   const override = overridePath ? await readJson(resolveProjectPath(overridePath)) : {};
   const config = deepMerge(defaults, override);
+  config.network = { ...config.network, httpsUpgradeHosts: httpsUpgradeHosts(config) };
   for (const [key, value] of Object.entries(config.paths ?? {})) {
     if (typeof value === "string" && value) config.paths[key] = resolveProjectPath(value);
   }
@@ -124,6 +127,12 @@ export async function loadConfig(overridePath = "config/run.json") {
 
 export function validateAiConfig(ai) {
   if (!ai?.enabled) return ai;
+  const categoryTypes = ["产品分类", "文章分类", "视频分类", "图册分类", "下载分类", "FAQ 分类"];
+  for (const type of categoryTypes) {
+    if (typeof ai.categorySystemPages?.[type] !== "string" || !ai.categorySystemPages[type].trim()) {
+      throw new Error(`ai.categorySystemPages 缺少 ${type} 的系统页映射`);
+    }
+  }
   for (const key of ['generationTimeoutMs', 'generationStatusRefreshIntervalMs', 'pageSwitchStableMs']) {
     if (ai[key] !== undefined && (!Number.isInteger(ai[key]) || ai[key] <= 0)) throw new Error(`ai.${key} 必须为正整数`);
   }

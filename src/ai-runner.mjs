@@ -35,10 +35,23 @@ async function firstVisible(locators) {
   return null;
 }
 
-async function clickAiEntry(locator) {
+export async function clickAiEntry(locator, { attempts = 4, settleMs = 60000 } = {}) {
   // Force clicks can succeed syntactically while a higher iframe receives
   // the physical pointer event. Require a genuine, unobstructed UI click.
-  await locator.click();
+  // The editor shell sometimes shows a transient page-load mask (or a
+  // still-closing AI iframe) over the entry; wait for it to clear and retry
+  // the same genuine click instead of failing the whole run.
+  for (let attempt = 1; ; attempt += 1) {
+    try { await locator.click({ timeout: 15000 }); return; } catch (error) {
+      if (attempt >= attempts || !/intercepts pointer events|Timeout/i.test(String(error?.message))) throw error;
+      const page = typeof locator.page === "function" ? locator.page() : null;
+      if (page) {
+        await page.locator(".el-loading-mask:visible, .loadingMask2:visible").first()
+          .waitFor({ state: "hidden", timeout: settleMs }).catch(() => {});
+        await page.waitForTimeout(1000);
+      }
+    }
+  }
 }
 
 function exactText(scope, text) {
@@ -130,7 +143,30 @@ export class AiBlockAutomation {
     return this.editor.page.frames().find((frame) => frame.url().includes(this.config.selectors.aiEditorFrameUrlIncludes));
   }
 
+  async recoverEditorForStatusRefresh() {
+    await this.editor.page.reload({ waitUntil: "domcontentloaded" });
+    await this.editor.waitForCanvasReady();
+    if (this.page?.name && typeof this.editor.openCustomPage === "function" && this.page.page_type !== "system") {
+      await this.editor.openCustomPage(this.page.name);
+    }
+  }
+
   async openAiDialog() {
+    try { return await this.openAiDialogOnce(); } catch (error) {
+      // The 4.0 AI iframe sometimes hangs on its page-load mask, leaving
+      // .px2-embed-overlay over the editor so every later entry click is
+      // intercepted. Opening the dialog is read-only: close or reload the
+      // editor on the same page and try exactly once more.
+      const overlay = await this.editor.page.locator('.px2-embed-overlay:visible').count().catch(() => 0);
+      if (!overlay && !/intercepts pointer events|Timeout|AI 4\.0|AI 生成弹窗|AI 编辑器/.test(String(error?.message))) throw error;
+      this.aiDialogRecoveries = (this.aiDialogRecoveries ?? 0) + 1;
+      await this.closeAiResult().catch(() => {});
+      if (await this.editor.page.locator('.px2-embed-overlay:visible').count().catch(() => 0)) await this.recoverEditorForStatusRefresh();
+      return await this.openAiDialogOnce();
+    }
+  }
+
+  async openAiDialogOnce() {
     const ai = await this.waitForAiImage();
     // A specialized block setting can leave the 4.0 editor's exit-confirm
     // layer behind after its final apply. Clear that completed-action prompt
@@ -384,9 +420,15 @@ export class AiBlockAutomation {
         exactText(frame, "应用模块"),
         frame.locator("button").filter({ hasText: "应用模块" }).first(),
       ]);
-      if (refreshCount === 0 && applyModule && await applyModule.isEnabled().catch(() => false)) return { mode: "module", control: applyModule, frame };
+      if (record?.type !== "复合区块" && refreshCount === 0 && applyModule && await applyModule.isEnabled().catch(() => false)) return { mode: "module", control: applyModule, frame };
       const cards = frame.locator(this.config.selectors.aiHistoryCardSelector);
       const cardCount = await cards.count().catch(() => 0);
+      if (record?.type === "复合区块" && typeof this.inspectCompositeHistoryRecord === "function") {
+        const compositeResult = await this.inspectCompositeHistoryRecord(frame, prompt, historyCountBefore, record);
+        if (compositeResult) return compositeResult;
+        if (await visible(frame.getByText(/AI正在生成|生成中/).first())) metadata.last_record_status = "running";
+        return false;
+      }
       // The service does not guarantee newest-first ordering.  Inspect all
       // newly-created/prompt-matching cards so a failed upload/image request
       // is reported as a confirmed refund instead of becoming a generic
@@ -445,10 +487,26 @@ export class AiBlockAutomation {
         return result;
       }
       if (Date.now() >= nextRefresh) {
-        await this.closeAiResult();
-        frame = await this.openAiDialog();
-        const history = frame.locator(this.config.selectors.aiHistoryTriggerSelector).first();
-        if (await visible(history)) await history.click();
+        // A status refresh is read-only. A transient editor overlay during the
+        // refresh must not abort the wait for an already submitted generation.
+        try {
+          await this.closeAiResult();
+          frame = await this.openAiDialog();
+          const history = frame.locator(this.config.selectors.aiHistoryTriggerSelector).first();
+          if (await visible(history)) await history.click();
+        } catch (error) {
+          metadata.generation_refresh_errors = [...(metadata.generation_refresh_errors ?? []),
+            { at: new Date().toISOString(), message: String(error?.message ?? error).split("\n")[0] }].slice(-5);
+          // The AI iframe can hang on its page-load mask. Reload the editor
+          // (read-only; the generation keeps running server-side) and reopen.
+          try {
+            await this.recoverEditorForStatusRefresh();
+            frame = await this.openAiDialog();
+            const history = frame.locator(this.config.selectors.aiHistoryTriggerSelector).first();
+            if (await visible(history)) await history.click();
+            metadata.generation_refresh_recoveries = (metadata.generation_refresh_recoveries ?? 0) + 1;
+          } catch { frame = this.aiFrame() ?? frame; }
+        }
         refreshCount += 1; nextRefresh = Date.now() + refreshMs;
       }
       await this.editor.page.waitForTimeout(Math.min(500, Math.max(0, deadline - Date.now())));
@@ -553,7 +611,8 @@ export class AiBlockAutomation {
     }
     const attemptSuffix = record.type === '复合区块' && Number(record.generation_attempt_number) > 1
       ? `,attempt=${Number(record.generation_attempt_number)}` : '';
-    const reference = this.aiConfig.runId ? `[runId=${this.aiConfig.runId},type=${record.type}${attemptSuffix}]` : '';
+    const reference = this.aiConfig.runId && this.aiConfig.suppressPromptRunMarker !== true
+      ? `[runId=${this.aiConfig.runId},type=${record.type}${attemptSuffix}]` : '';
     if (reference && !generationPrompt.includes(reference)) {
       generationPrompt = `${reference} ${generationPrompt}`;
       await fillAndVerify(prompt, generationPrompt);

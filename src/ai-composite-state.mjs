@@ -85,12 +85,28 @@ export function compositePassed(state, config) {
     record.composite_editor_evidence?.passed === true && !state.page.type_failures?.length;
 }
 
+export function assertComboPairCostConsistency(first, second) {
+  const a = first?.types?.[0], b = second?.types?.[0];
+  if (!a || !b || first.combo_assertions_status !== "PASS" || second.combo_assertions_status !== "PASS") throw new Error("Both combo runs must pass their editor assertions");
+  if (JSON.stringify(a.composite_selection?.selected_dynamic_types) !== JSON.stringify(b.composite_selection?.selected_dynamic_types)) throw new Error("Combo pair selections differ");
+  for (const record of [a, b]) {
+    const observedDelta = record.combo_points_before - record.combo_points_after;
+    const attributedAdditionalCharges = record.combo_balance_delta_attribution === "contains additional completed generation charge(s)" &&
+      Number.isInteger(record.combo_balance_delta_observed) && record.combo_balance_delta_observed === observedDelta && observedDelta >= record.combo_points_charged;
+    if (!Number.isInteger(record.combo_points_charged) || record.combo_points_charged <= 0 ||
+      (observedDelta !== record.combo_points_charged && !attributedAdditionalCharges) ||
+      record.combo_history_record?.points !== record.combo_points_charged) throw new Error("Combo balance delta and history points badge do not agree");
+  }
+  if (a.combo_points_charged !== b.combo_points_charged) throw new Error(`Combo pair costs differ: ${a.combo_points_charged} vs ${b.combo_points_charged}`);
+  return { passed: true, selected_dynamic_types: a.composite_selection.selected_dynamic_types, cost: a.combo_points_charged };
+}
+
 export function compositeResumeAction(state, config) {
   if (compositePassed(state, config)) return "complete";
   const record = state?.types?.[0];
   if (!record) throw new Error("复合区块专项状态缺少唯一生成记录，拒绝恢复");
   if (record.application_attempted && record.apply_status !== "applied") throw new Error("复合区块应用状态不确定，需人工检查后再恢复");
-  if (record.generation_status === "uncertain" && record.generation_submit_confirmed === true &&
+  if (["uncertain", "succeeded"].includes(record.generation_status) && record.generation_submit_confirmed === true &&
       record.apply_status !== "applied" && !record.application_attempted && !record.application_commit_confirmed && !record.committed_block_id) {
     return "resume-existing-record";
   }

@@ -2,15 +2,41 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { aiPageDescriptor, loadConfig, validateCompositeRegression } from "../src/config.mjs";
 import { createInitialAiState } from "../src/ai-state.mjs";
-import { canRetryCompositeGeneration, compositeSelectionValid, prepareCompositeGenerationRetry } from "../src/ai-composite-runner.mjs";
+import { canContinueCompositeHistory, canRetryCompositeGeneration, compositeHistoryRecordMatches, compositeSelectionValid, prepareCompositeGenerationRetry } from "../src/ai-composite-runner.mjs";
 import {
   assertCompositeState,
+  assertComboPairCostConsistency,
   compositePassed,
   compositePaths,
   compositeResumeAction,
   compositeScopedConfig,
   newCompositeRunId,
 } from "../src/ai-composite-state.mjs";
+
+test("combo pair requires equal balance delta and generation-history points badge", () => {
+  const make = run_id => ({ run_id, combo_assertions_status: "PASS", types: [{
+    composite_selection: { selected_dynamic_types: ["产品列表", "产品分类"] },
+    combo_points_before: 100, combo_points_after: 70, combo_points_charged: 30,
+    combo_history_record: { points: 30 },
+  }] });
+  assert.deepEqual(assertComboPairCostConsistency(make("one"), make("two")), {
+    passed: true, selected_dynamic_types: ["产品列表", "产品分类"], cost: 30,
+  });
+  const mismatch = make("two"); mismatch.types[0].combo_history_record.points = 15;
+  assert.throws(() => assertComboPairCostConsistency(make("one"), mismatch), /badge/);
+});
+
+test("combo pair can isolate each history-row cost from additional delayed balance charges", () => {
+  const make = (run_id, before, after, balanceDelta, attributed = false) => ({ run_id, combo_assertions_status: "PASS", types: [{
+    composite_selection: { selected_dynamic_types: ["产品列表", "产品分类"] },
+    combo_points_before: before, combo_points_after: after, combo_points_charged: 6,
+    combo_balance_delta_observed: balanceDelta,
+    ...(attributed ? { combo_balance_delta_attribution: "contains additional completed generation charge(s)" } : {}),
+    combo_history_record: { points: 6 },
+  }] });
+  assert.equal(assertComboPairCostConsistency(make("one", 100, 94, 6), make("two", 94, 58, 36, true)).cost, 6);
+  assert.throws(() => assertComboPairCostConsistency(make("one", 100, 94, 6), make("two", 94, 58, 36)), /balance delta/);
+});
 
 test("复合区块专项默认使用静态图文、产品列表和产品分类", async () => {
   const config = await loadConfig("config/run.json");
@@ -59,6 +85,20 @@ test("复合区块只有平台明确失败才新建生成尝试，超时不重�
   assert.equal(record.application_attempted, false);
 });
 
+test("combo resume allows at most one same-record Continue", () => {
+  assert.equal(canContinueCompositeHistory({}, 1), true);
+  assert.equal(canContinueCompositeHistory({ continuation_attempts: [{}] }, 1), false);
+  assert.equal(canContinueCompositeHistory({ continuation_attempts: [{}, {}] }, 1), false);
+});
+
+test("combo history recovery matches the platform's 组合区块 label and exact timestamp", () => {
+  const record = { polished_prompt: "润色后的组合提示词", combo_history_record: { timestamp: "2026-10-26 09:20:02" } };
+  const parsed = { status: "completed", block_type: "组合区块：产品列表、产品分类", mode: "quick", points: 6,
+    timestamp: record.combo_history_record.timestamp, prompt: "润色后的组合提示词" };
+  assert.equal(compositeHistoryRecordMatches(parsed, record, "quick", 6), true);
+  assert.equal(compositeHistoryRecordMatches({ ...parsed, timestamp: "2026-10-26 09:42:50" }, record, "quick", 6), false);
+});
+
 test("复合区块选择状态要求静态默认、组合开关和恰好指定的动态项", () => {
   const valid = { static_layout: "静态图文", static_layout_selected_before_combo: true, combination_enabled: true,
     max_dynamic_types: 3, selected_dynamic_types: ["产品列表", "产品分类"] };
@@ -82,6 +122,9 @@ test("复合区块页面与状态按 runId 隔离，恢复不会重复已提交�
   assert.equal(compositeResumeAction(state, config), "generate");
   state.types[0].generation_status = "succeeded";
   assert.throws(() => compositeResumeAction(state, config), /不能自动重复生成/);
+  state.types[0].generation_submit_confirmed = true;
+  assert.equal(compositeResumeAction(state, config), "resume-existing-record");
+  state.types[0].generation_submit_confirmed = false;
   state.types[0].generation_status = "uncertain";
   state.types[0].generation_submit_confirmed = true;
   assert.equal(compositeResumeAction(state, config), "resume-existing-record");
@@ -98,6 +141,18 @@ test("复合区块页面与状态按 runId 隔离，恢复不会重复已提交�
   assert.throws(() => compositeResumeAction(state, config), /重复生成/);
   assert.throws(() => assertCompositeState(state, config, "other-run"), /运行 ID/);
   assert.equal(newCompositeRunId(new Date("2026-10-20T01:02:03.000Z")), "composite-20261020010203");
+});
+
+test("combo prompt suppression keeps run IDs out of both state prompt fields", async () => {
+  const config = await loadConfig("config/run.json");
+  const runId = "combo-prompt-unit-001";
+  const paths = compositePaths(config, runId);
+  const scoped = compositeScopedConfig(config, runId, paths.state);
+  scoped.ai.suppressPromptRunMarker = true;
+  scoped.ai.prompts["复合区块"] = "产品列表和产品分类";
+  const state = createInitialAiState(scoped, aiPageDescriptor(scoped, 1));
+  assert.equal(state.types[0].original_prompt, "产品列表和产品分类");
+  assert.equal(state.types[0].prompt, "产品列表和产品分类");
 });
 
 test("复合区块闭环必须逐项确认菜单、应用、编辑器、预览和公开发布", async () => {
