@@ -152,6 +152,21 @@ export class AiBlockAutomation {
   }
 
   async openAiDialog() {
+    try { return await this.openAiDialogOnce(); } catch (error) {
+      // The 4.0 AI iframe sometimes hangs on its page-load mask, leaving
+      // .px2-embed-overlay over the editor so every later entry click is
+      // intercepted. Opening the dialog is read-only: close or reload the
+      // editor on the same page and try exactly once more.
+      const overlay = await this.editor.page.locator('.px2-embed-overlay:visible').count().catch(() => 0);
+      if (!overlay && !/intercepts pointer events|Timeout|AI 4\.0|AI 生成弹窗|AI 编辑器/.test(String(error?.message))) throw error;
+      this.aiDialogRecoveries = (this.aiDialogRecoveries ?? 0) + 1;
+      await this.closeAiResult().catch(() => {});
+      if (await this.editor.page.locator('.px2-embed-overlay:visible').count().catch(() => 0)) await this.recoverEditorForStatusRefresh();
+      return await this.openAiDialogOnce();
+    }
+  }
+
+  async openAiDialogOnce() {
     const ai = await this.waitForAiImage();
     // A specialized block setting can leave the 4.0 editor's exit-confirm
     // layer behind after its final apply. Clear that completed-action prompt

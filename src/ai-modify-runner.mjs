@@ -9,21 +9,28 @@ export class AiModifyAutomation extends NewFlowAutomation {
     await this.base.openAiDialog();
     await this.base.closeAiResult();
     await this.assertOwnedIdentity();
-    const { frame, block } = await this.block(id);
-    await block.scrollIntoViewIfNeeded();
-    const box = await block.boundingBox();
-    if (!box) throw new Error('Owned block has no canvas bounds');
-    // The AI mask deliberately intercepts Locator.hover/click on the section.
-    // A native pointer selects that mask and reveals its actual toolbar.
-    await this.editor.page.mouse.move(box.x + Math.min(40, box.width / 2), box.y + Math.min(40, box.height / 2));
-    await this.editor.page.mouse.click(box.x + Math.min(40, box.width / 2), box.y + Math.min(40, box.height / 2));
-    const wrapperId = await block.evaluate(node => node.closest('.siteblocks-setting-wrap')?.id || node.querySelector('.siteblocks-setting-wrap')?.id || node.closest('.backstage-blocksEditor-wrap')?.id || '');
-    if (!wrapperId) throw new Error('Owned AI block wrapper missing');
-    const controls = frame.locator('.ai-block-ai-modify-btn').filter({ visible: true });
-    const matching = await wait(async () => {
-      for (const control of await controls.all()) if (await control.getAttribute('data-id') === wrapperId) return control;
-      return false;
-    }, 15000, 'Owned block AI modification toolbar missing');
+    // After a preview tab the editor may lose focus, and the toolbar only
+    // appears on a fresh native pointer selection; reselect up to 3 times.
+    let frame, matching = null;
+    for (let attempt = 1; attempt <= 3 && !matching; attempt += 1) {
+      await this.editor.page.bringToFront().catch(() => {});
+      const found = await this.block(id); frame = found.frame; const block = found.block;
+      await block.scrollIntoViewIfNeeded();
+      const box = await block.boundingBox();
+      if (!box) throw new Error('Owned block has no canvas bounds');
+      // The AI mask deliberately intercepts Locator.hover/click on the section.
+      // A native pointer selects that mask and reveals its actual toolbar.
+      const x = box.x + Math.min(40, box.width / 2), y = box.y + Math.min(40 + (attempt - 1) * 30, box.height / 2);
+      await this.editor.page.mouse.move(x, y);
+      await this.editor.page.mouse.click(x, y);
+      const wrapperId = await block.evaluate(node => node.closest('.siteblocks-setting-wrap')?.id || node.querySelector('.siteblocks-setting-wrap')?.id || node.closest('.backstage-blocksEditor-wrap')?.id || '');
+      if (!wrapperId) throw new Error('Owned AI block wrapper missing');
+      const controls = frame.locator('.ai-block-ai-modify-btn').filter({ visible: true });
+      matching = await wait(async () => {
+        for (const control of await controls.all()) if (await control.getAttribute('data-id') === wrapperId) return control;
+        return false;
+      }, 10000, 'Owned block AI modification toolbar missing').catch(error => { if (attempt === 3) throw error; return null; });
+    }
     await matching.click();
     const ui = await wait(() => this.base.aiFrame(), 15000, 'Modification editor frame missing');
     const input = ui.getByPlaceholder(/描述你想要修改的内容/);

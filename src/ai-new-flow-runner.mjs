@@ -20,6 +20,13 @@ export class NewFlowAutomation {
     this.editor = editor;
     this.base = new AiBlockAutomation(editor, { ...this.config, ai: { ...this.config.ai, inputMode: '文字描述', generationMode: '快速模式', promptPolishEnabled: false } });
     this.base.state = { page: { types: [] }, types: [{ type: '静态图文' }] };
+    // Stuck-AI-dialog recovery must reopen this flow's own custom page.
+    this.base.recoverEditorForStatusRefresh = async () => {
+      await this.editor.page.reload({ waitUntil: 'domcontentloaded' });
+      await this.editor.waitForCanvasReady();
+      const page = this.currentPage ?? this.state?.page;
+      if (page?.name) await this.editor.openCustomPage(page.name);
+    };
     this.base.persist = () => this.persist();
     const closeResult = this.base.closeAiResult.bind(this.base);
     this.base.closeAiResult = async () => {
