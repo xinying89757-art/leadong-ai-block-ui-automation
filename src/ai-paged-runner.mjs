@@ -183,12 +183,25 @@ export class AiPagedAutomation extends AiBlockAutomation {
     if (next.mode === "module") {
       await next.control.click({ force: true });
     }
-    const finalApply = next.mode === "final"
+    let finalApply = next.mode === "final"
       ? next.control
       : await firstVisibleControl((scope) => scope.locator(this.config.selectors.aiApplySelector).filter({ hasText: /^应用$/ }).first());
     if (!finalApply) throw new Error(`历史记录应用模块后未找到最终应用按钮：${record.type}`);
     await this.beforeFinalApply({ frame, record });
-    await this.waitForAiControlReady(frame, finalApply, `AI 历史记录应用按钮(${record.type})`);
+    try {
+      await this.waitForAiControlReady(frame, finalApply, `AI 历史记录应用按钮(${record.type})`);
+    } catch (error) {
+      // The insert click can be a silent no-op: the history card stays on
+      // top and only a stale, covered 应用 button is found. Retry insert once.
+      if (!(await history.insert.isVisible().catch(() => false))) throw error;
+      record.history_insert_retry = true;
+      await history.insert.click({ force: true });
+      await this.editor.page.waitForTimeout(1500);
+      const moduleRetry = await firstVisibleControl((scope) => scope.locator("button").filter({ hasText: "应用模块" }).first());
+      if (moduleRetry) await moduleRetry.click({ force: true });
+      finalApply = (await firstVisibleControl((scope) => scope.locator(this.config.selectors.aiApplySelector).filter({ hasText: /^应用$/ }).first())) ?? finalApply;
+      await this.waitForAiControlReady(frame, finalApply, `AI 历史记录应用按钮(${record.type})`);
+    }
     const saveResponse = this.editor.page.waitForResponse(
       (response) => response.request().method() === "POST" && response.url().includes("/phoenix2/composite/editor/v1/newEditor/savePage"),
       { timeout: this.config.timeouts.blockRenderMs },
