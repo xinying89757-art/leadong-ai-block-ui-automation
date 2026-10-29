@@ -9,6 +9,7 @@ import {
   markTypeFailed,
   markTypeGenerated,
   markTypePolishFailed,
+  markTypePolishSkipped,
   markTypePolishStarted,
   markTypePolished,
   markTypeStarted,
@@ -67,6 +68,19 @@ test("提示词润色成功会保存原始和润色后的提示词", async () =>
   assert.equal(record.prompt, record.polished_prompt);
   assert.equal(record.polish_status, "succeeded");
   assert.ok(record.polished_at);
+});
+
+test("禁用提示词润色时记录跳过状态并保留原始组件名供历史匹配", async () => {
+  const config = await loadConfig("config/run.json");
+  const state = createInitialAiState(config, { number: 1, name: "p", path: "/p", publicUrl: "http://example.test/p" });
+  const record = state.types[0];
+  record.original_prompt = "产品列表+产品分类";
+  record.prompt = record.original_prompt;
+  markTypeStarted(record);
+  markTypePolishSkipped(record);
+  assert.equal(record.polish_status, "skipped");
+  assert.equal(record.prompt, "产品列表+产品分类");
+  assert.equal(record.polished_prompt, "产品列表+产品分类");
 });
 
 test("提示词润色失败不会被标记为成功", async () => {

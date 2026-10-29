@@ -588,8 +588,9 @@ export function validateCompositeRegression(mode, generationModes = DEFAULT_GENE
   }
   if (mode.type !== "复合区块") throw new Error("复合区块专项类型必须为复合区块");
   if (mode.staticType !== "静态图文") throw new Error("复合区块专项静态布局必须为静态图文");
-  if (mode.inputMode !== "文字描述" || !generationModes.some(item => item.label === mode.generationMode || item.aliases?.includes(mode.generationMode))) {
-    throw new Error("复合区块专项目前只支持文字描述及快速、进阶或深度模式");
+  const selectedMode = generationModes.find(item => item.label === mode.generationMode || item.aliases?.includes(mode.generationMode));
+  if (mode.inputMode !== "文字描述" || !selectedMode || selectedMode.key === "deep") {
+    throw new Error("复合区块专项目前只支持文字描述及快速或进阶模式，不能使用深度模式");
   }
   if (typeof mode.promptPolishEnabled !== "boolean") throw new Error("compositeRegression.promptPolishEnabled 必须是布尔值");
   if (!Number.isInteger(mode.maxGenerationAttempts) || mode.maxGenerationAttempts < 1 || mode.maxGenerationAttempts > 10) {
@@ -609,7 +610,10 @@ export function validateCompositeRegression(mode, generationModes = DEFAULT_GENE
   for (const key of ["applyIntervalMs", "publishInitialWaitMs", "publishPollIntervalMs", "publishTimeoutMs"]) {
     if (!Number.isInteger(mode[key]) || mode[key] < 0) throw new Error(`compositeRegression.${key} 必须为非负整数`);
   }
-  if (!/\bEnglish\b/i.test(mode.prompt)) throw new Error("复合区块专项提示词必须明确要求英文内容");
+  const expectedPrompt = mode.dynamicTypes.join("+");
+  if (mode.prompt.replace(/\s+/g, "") !== expectedPrompt.replace(/\s+/g, "")) {
+    throw new Error("复合区块专项提示词必须仅包含所选组件名称，并用 + 连接");
+  }
   const linkage = mode.productCategoryRegression;
   if (linkage?.enabled) {
     if (linkage.systemPage !== 'Products' || linkage.publicPath !== '/products.html') throw new Error('复合区块分类联动必须使用 Products 系统页');

@@ -34,6 +34,7 @@ export function compositeScopedConfig(config, runId, stateFile) {
       publishPollIntervalMs: mode.publishPollIntervalMs,
       publishTimeoutMs: mode.publishTimeoutMs,
       followupPages: [],
+      suppressPromptRunMarker: true,
       prompts: { ...config.ai.prompts, [mode.type]: mode.prompt },
     },
     paths: { ...config.paths, aiStateFile: stateFile },
@@ -78,6 +79,7 @@ export function compositePassed(state, config) {
     state.page.types?.length === 1 && state.page.types[0] === config.ai.compositeRegression.type &&
     record?.type_menu_evidence?.match_count === 1 && record.type_menu_evidence.status === "matched" &&
     record?.generation_status === "succeeded" && record.apply_status === "applied" &&
+    record.combo_points_status === "passed" &&
     finalAttempt?.status === "succeeded" && finalAttempt.generation_mode === config.ai.compositeRegression.generationMode &&
     Boolean(record.committed_block_id) && record.composite_selection?.static_layout === config.ai.compositeRegression.staticType &&
     record.composite_selection?.combination_enabled === true && record.composite_selection?.max_dynamic_types === 3 &&
@@ -106,18 +108,17 @@ export function compositeResumeAction(state, config) {
   const record = state?.types?.[0];
   if (!record) throw new Error("复合区块专项状态缺少唯一生成记录，拒绝恢复");
   if (record.application_attempted && record.apply_status !== "applied") throw new Error("复合区块应用状态不确定，需人工检查后再恢复");
-  if (["uncertain", "succeeded"].includes(record.generation_status) && record.generation_submit_confirmed === true &&
-      record.apply_status !== "applied" && !record.application_attempted && !record.application_commit_confirmed && !record.committed_block_id) {
-    return "resume-existing-record";
-  }
   const lastAttempt = record.generation_attempts?.at(-1);
+  const submittedGenerationRecoverable = ["running", "uncertain", "succeeded"].includes(record.generation_status) ||
+    (record.generation_status === "failed" && lastAttempt?.explicit_platform_failure !== true);
+  if (submittedGenerationRecoverable && record.generation_submit_confirmed === true &&
+      record.apply_status !== "applied" && !record.application_attempted && !record.application_commit_confirmed && !record.committed_block_id) {
+    return "resume-current-generation-page";
+  }
   if (record.generation_status === "failed" && lastAttempt?.explicit_platform_failure === true &&
       Number(record.generation_attempt_number || 1) < config.ai.compositeRegression.maxGenerationAttempts &&
       record.apply_status !== "applied" && !record.application_attempted && !record.application_commit_confirmed && !record.committed_block_id) {
     return "retry-explicit-failure";
-  }
-  if (["running", "uncertain", "succeeded"].includes(record.generation_status) && record.apply_status !== "applied") {
-    throw new Error("复合区块生成已提交但应用未确认，请先从生成记录核对，不能自动重复生成");
   }
   if (record.apply_status === "applied" && state.page?.types?.includes(config.ai.compositeRegression.type)) return "finish-page-checkpoints";
   const submitted = record.generation_submit_confirmed === true || Boolean(record.generation_submitted_at || record.generation_record_id);

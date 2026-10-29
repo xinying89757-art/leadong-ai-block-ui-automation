@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { aiPageDescriptor, loadConfig, validateCompositeRegression } from "../src/config.mjs";
 import { createInitialAiState } from "../src/ai-state.mjs";
-import { canContinueCompositeHistory, canRetryCompositeGeneration, compositeHistoryRecordMatches, compositeSelectionValid, prepareCompositeGenerationRetry } from "../src/ai-composite-runner.mjs";
+import { canContinueCompositeHistory, canRetryCompositeGeneration, classifyCompositeLiveGeneration, compositeHistoryRecordMatches, compositePromptOnlyView, compositeSelectionValid, prepareCompositeGenerationRetry } from "../src/ai-composite-runner.mjs";
 import {
   assertCompositeState,
   assertComboPairCostConsistency,
@@ -47,10 +47,29 @@ test("复合区块专项默认使用静态图文、产品列表和产品分类",
   assert.equal(mode.dynamicTypes.length, 2);
   assert.equal(mode.maxGenerationAttempts, 10);
   assert.equal(mode.generationTimeoutMs, 600000);
-  assert.equal(mode.generationMode, "深度模式");
+  assert.equal(mode.generationMode, "快速模式");
+  assert.equal(mode.promptPolishEnabled, false);
+  assert.equal(mode.prompt, "产品列表+产品分类");
   assert.doesNotThrow(() => validateCompositeRegression(mode));
+  assert.throws(() => validateCompositeRegression({ ...mode, generationMode: "深度模式" }), /不能使用深度模式/);
   assert.throws(() => validateCompositeRegression({ ...mode, dynamicTypes: ["产品列表", "产品列表"] }), /互不重复/);
   assert.throws(() => validateCompositeRegression({ ...mode, dynamicTypes: ["产品列表", "产品分类", "文章列表", "视频列表"] }), /1–3/);
+});
+
+test("复合区块生成等待只在当前页面判断状态，不需要打开生成记录", () => {
+  assert.equal(classifyCompositeLiveGeneration({ applyModuleVisible: true, applyModuleEnabled: true }), "succeeded");
+  assert.equal(classifyCompositeLiveGeneration({ applyModuleVisible: true, applyModuleEnabled: false, text: "正在生成整体预览" }), "running");
+  assert.equal(classifyCompositeLiveGeneration({ text: "正在生成整体预览" }), "running");
+  assert.equal(classifyCompositeLiveGeneration({ text: "正在生成整体预览；组合操作失败，已保留可恢复进度" }), "running");
+  assert.equal(classifyCompositeLiveGeneration({ text: "组合操作失败，已保留可恢复进度" }), "failed");
+  assert.equal(classifyCompositeLiveGeneration({ text: "等待页面更新" }), "waiting");
+});
+
+test("恢复后若只剩提示词页且没有生成进度，短暂等待后标记结果待确认，不盲目重生成", () => {
+  assert.equal(compositePromptOnlyView({ submitted: true, dialogVisible: true, promptVisible: true, hasProgress: false, elapsedMs: 9999 }), false);
+  assert.equal(compositePromptOnlyView({ submitted: true, dialogVisible: true, promptVisible: true, hasProgress: false, elapsedMs: 10000 }), true);
+  assert.equal(compositePromptOnlyView({ submitted: true, dialogVisible: true, promptVisible: true, hasProgress: true, elapsedMs: 12000 }), false);
+  assert.equal(compositePromptOnlyView({ submitted: false, dialogVisible: true, promptVisible: true, hasProgress: false, elapsedMs: 12000 }), false);
 });
 
 test("复合区块只有平台明确失败才新建生成尝试，超时不重复扣点", () => {
@@ -121,13 +140,16 @@ test("复合区块页面与状态按 runId 隔离，恢复不会重复已提交�
   assert.doesNotThrow(() => assertCompositeState(state, config, runId));
   assert.equal(compositeResumeAction(state, config), "generate");
   state.types[0].generation_status = "succeeded";
-  assert.throws(() => compositeResumeAction(state, config), /不能自动重复生成/);
+  assert.throws(() => compositeResumeAction(state, config), /不确定|不能自动重复生成/);
   state.types[0].generation_submit_confirmed = true;
-  assert.equal(compositeResumeAction(state, config), "resume-existing-record");
+  assert.equal(compositeResumeAction(state, config), "resume-current-generation-page");
   state.types[0].generation_submit_confirmed = false;
   state.types[0].generation_status = "uncertain";
   state.types[0].generation_submit_confirmed = true;
-  assert.equal(compositeResumeAction(state, config), "resume-existing-record");
+  assert.equal(compositeResumeAction(state, config), "resume-current-generation-page");
+  state.types[0].generation_status = "failed";
+  state.types[0].generation_attempts = [{ attempt: 1, status: "failed", explicit_platform_failure: false }];
+  assert.equal(compositeResumeAction(state, config), "resume-current-generation-page");
   state.types[0].application_attempted = true;
   assert.throws(() => compositeResumeAction(state, config), /应用状态不确定/);
   state.types[0].application_attempted = false;
@@ -143,16 +165,14 @@ test("复合区块页面与状态按 runId 隔离，恢复不会重复已提交�
   assert.equal(newCompositeRunId(new Date("2026-10-20T01:02:03.000Z")), "composite-20261020010203");
 });
 
-test("combo prompt suppression keeps run IDs out of both state prompt fields", async () => {
+test("composite prompt suppression keeps run IDs out of both state prompt fields", async () => {
   const config = await loadConfig("config/run.json");
   const runId = "combo-prompt-unit-001";
   const paths = compositePaths(config, runId);
   const scoped = compositeScopedConfig(config, runId, paths.state);
-  scoped.ai.suppressPromptRunMarker = true;
-  scoped.ai.prompts["复合区块"] = "产品列表和产品分类";
   const state = createInitialAiState(scoped, aiPageDescriptor(scoped, 1));
-  assert.equal(state.types[0].original_prompt, "产品列表和产品分类");
-  assert.equal(state.types[0].prompt, "产品列表和产品分类");
+  assert.equal(state.types[0].original_prompt, "产品列表+产品分类");
+  assert.equal(state.types[0].prompt, "产品列表+产品分类");
 });
 
 test("复合区块闭环必须逐项确认菜单、应用、编辑器、预览和公开发布", async () => {
@@ -171,6 +191,7 @@ test("复合区块闭环必须逐项确认菜单、应用、编辑器、预览�
     combination_enabled: true, max_dynamic_types: 3, requested_dynamic_types: ["产品列表", "产品分类"],
     selected_dynamic_types: ["产品列表", "产品分类"] };
   record.composite_editor_evidence = { passed: true };
+  record.combo_points_status = "passed";
   state.page.types = ["复合区块"];
   state.page.saved = true;
   state.page.editor_verified = true;

@@ -165,7 +165,7 @@ npm run ai:validation:cleanup -- --run-id validation-example --apply
 
 ## AI 区块新增流程
 
-需要 Node.js 20+、`npm ci`、`npx playwright install chromium` 和有权限的测试站点账号。先按“安装与配置”创建本地 `.env.local` 并填写管理员账号密码。命令通过 `--` 将后续参数传给流程 CLI；每次 `run` 使用新的 `--run-id`。这些流程会在真实站点生成内容并消耗积分，但不会发布。
+需要 Node.js 20+、`npm ci`、`npx playwright install chromium` 和有权限的测试站点账号。先按“安装与配置”创建本地 `.env.local` 并填写管理员账号密码。命令通过 `--` 将后续参数传给流程 CLI；每次 `run` 使用新的 `--run-id`。这些流程会在真实站点生成内容并消耗积分。`ai:modify`、`ai:result-actions`、`ai:history` 和 `ai:validation` 使用独立测试页且不发布；`ai:combo` 会执行系统页预览、发布、公开页展示和分类内容核对。
 
 ```sh
 npm run ai:modify -- --run-id modify-local-01
@@ -194,9 +194,9 @@ npm run ai:combo:resume -- --combo product_pair --mode quick --run-id combo-prod
 npm run ai:combo:cleanup -- --combo product_pair --run-id combo-product-local-01
 ```
 
-`ai:combo` 的 `--combo` 可选 `product_pair`、`article_pair`、`three_type`、`video_pair`、`gallery_pair`、`download_pair`、`faq_pair`，`--mode` 可选 `quick`、`advanced`、`deep`。含分类的组合在对应系统页面运行：产品组合/产品分类使用 `Products`，文章分类使用 `News`；视频、图册、下载和 FAQ 分类使用配置中各自对应的系统页。系统页流程先记录区块 ID 和顺序快照，完成后只移除本次凭据确认的自有区块，保存、重载并核对页面恢复到快照；cleanup 同样只移除自有区块，绝不删除系统页或既有内容。其他四个流程使用各自归属的自定义测试页。
+`ai:combo` 的 `--combo` 可选 `product_pair`、`article_pair`、`three_type`、`video_pair`、`gallery_pair`、`download_pair`、`faq_pair`，`--mode` 可选 `quick` 或 `advanced`；复合区块专项默认快速模式，并拒绝深度模式。含分类的组合在对应系统页面运行：产品组合/产品分类使用 `Products`，文章分类使用 `News`；视频、图册、下载和 FAQ 分类使用配置中各自对应的系统页。系统页流程记录稳定区块 ID 和所有权，完成生成、应用、保存重开、预览、发布及公开页展示验证。公开路径从预览中实际渲染本轮区块的页面读取；发布后按异步轮询确认该区块。运行成功后保留区块，下轮进入同一系统页时仅替换唯一匹配所有权的上轮区块；归属不明时停止。cleanup 只移除自有区块，不删除系统页。通用组合专项在发布后还会核对预览和公开页的分类点击结果，与后台对应分类的内容集合比较；`ai:composite:products` 产品专项继续保留。其他四个流程使用各自归属的自定义测试页。
 
-提示词只写组合名称（如“视频列表和视频分类”），先点“润色”再以快速模式生成。新增四组：`video_pair`（视频列表+视频分类，`Video List` 系统页）、`gallery_pair`（图册列表+图册分类，`Gallery`）、`download_pair`（下载列表+下载分类，`Download`）、`faq_pair`（FAQ 列表+FAQ 分类，`FAQ`）。组合生成常超过 10 分钟，组合流程等待上限为 20 分钟；若到达上限时平台仍显示生成中，可用 `:resume` 读取历史记录：已完成则直接插入并校验（不重新生成），平台「组合操作失败」则最多点 1 次“继续生成”。可用 `node src/ai-combo-cli.mjs inspect --combo <id> --run-id <runId>` 只读查看该轮历史记录和页面快照。
+组合区块关闭提示词润色，直接使用组件名称并以 `+` 连接（如“视频列表+视频分类”），默认快速模式生成。生成期间停留在当前预览页轮询，不打开生成记录。新增四组：`video_pair`（视频列表+视频分类，`Video List` 系统页）、`gallery_pair`（图册列表+图册分类，`Gallery`）、`download_pair`（下载列表+下载分类，`Download`）、`faq_pair`（FAQ 列表+FAQ 分类，`FAQ`）。组合生成常超过 10 分钟，组合流程等待上限为 20 分钟；到达上限时保留“仍在生成/结果待确认”状态，`:resume` 继续观察当前生成页面，不重新提交生成或自动打开生成记录。可用 `node src/ai-combo-cli.mjs inspect --combo <id> --run-id <runId>` 单独只读检查生成记录和系统页快照。
 
 Phase H（2026-10-26，各跑 2 次，快速模式）结果：
 
@@ -207,8 +207,29 @@ Phase H（2026-10-26，各跑 2 次，快速模式）结果：
 | download_pair | Download | 1/2 | 1 | H-02 生成超过 20 分钟，resume 后通过 |
 | faq_pair | FAQ | 1/2 | 1 | H-02 生成超过 20 分钟，resume 后通过 |
 
-所有运行结束后四个系统页区块快照与运行前一致（均为空）。运行报告写入本地 `reports/ai-combo/<runId>/`（不入库）。
+上述 Phase H 历史运行结束后，四个系统页区块快照与运行前一致（均为空）。当前版本采用运行结束保留、下轮运行前安全替换的策略。运行报告写入本地 `reports/ai-combo/<runId>/`（不入库）。
 
 `run`、`resume` 和 `cleanup` 需要 `--apply`；run/resume 的 npm 脚本已包含该开关，cleanup 命令也已包含。查看本地断点可执行对应 `:status`；中断后用相同 run ID 调用 `:resume`。可使用 `npm test` 运行离线测试。
 
-状态自动写入 `.state/`，报告及截图写入 `reports/`，临时验证图片写入 `tmp/`；这些目录按需创建并由 Git 忽略。当前自动化箱无法访问 TCP 80，预览会显示 `preview_status: blocked-environment`，不代表区块断言失败。若本机网络允许访问预览地址，可在报告中单独验证预览结果。
+状态自动写入 `.state/`，报告及截图写入 `reports/`，临时验证图片写入 `tmp/`；这些目录按需创建并由 Git 忽略。早期环境曾无法访问 TCP 80，历史报告可能显示 `preview_status: blocked-environment`。当前组合回归要求预览及公开页实际验证通过，环境阻断不会计为完整链路通过。
+
+### 组合分类与内容联动
+
+`ai:combo` 在发布通过后自动核对分类联动：后台对应模块筛选目标分类 → 预览点击分类 → 核对完整内容集合 → 公开页点击同一分类 → 再次核对。产品使用“测试分类”，文章使用“测试文章分类”，视频、图册、下载、FAQ 使用各自的“分类1”。比较数量、唯一标题及可获得的稳定 ID，要求筛选前后存在可区分变化；后台结果不完整、同名内容有歧义、混入其他分类、缺项或重复均失败，不把列表“非空”当作通过。
+
+可对已发布且有所有权记录的组合单独执行，不再次生成：
+
+```bash
+npm run ai:combo:linkage -- --all
+npm run ai:combo:linkage -- --module=download
+npm run ai:combo:linkage -- --module=article --run-id=<runId>
+```
+
+模块：`prod`、`article`、`video`、`gallery`、`download`、`faq`。状态保存到该次组合状态的 `category_linkage`；截图保存到相邻 `category-linkage/`。已通过检查点恢复时跳过，失败项可单独重跑。此命令通过 UI 读取后台与点击前台分类，不新建内容或发起 AI 生成。
+
+离线重建分类联动报告（含内嵌截图）：
+
+```bash
+npm run ai:combo:linkage:report
+npm run ai:combo:linkage:report -- --parent-report=reports/expanded-20261029/ai-ui-regression-report.html
+```

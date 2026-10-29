@@ -184,6 +184,16 @@ export function markTypePolished(record, polishedPrompt) {
   record.polish_failure_reason = "";
 }
 
+export function markTypePolishSkipped(record) {
+  const value = String(record.original_prompt ?? record.prompt ?? "").trim();
+  if (!value) throw new Error("原始提示词为空，无法跳过润色");
+  record.polished_prompt = value;
+  record.prompt = value;
+  record.polish_status = "skipped";
+  record.polished_at = "";
+  record.polish_failure_reason = "";
+}
+
 export function markTypePolishFailed(record, error) {
   record.polish_status = "failed";
   record.polish_failure_reason = error instanceof Error ? error.message : String(error);

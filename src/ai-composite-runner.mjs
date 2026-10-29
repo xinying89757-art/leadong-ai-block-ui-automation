@@ -2,6 +2,7 @@ import { AiPagedAutomation } from "./ai-paged-runner.mjs";
 import { AiDialogPointsReader } from "./ai-points.mjs";
 import { parseGenerationHistoryRecord } from "./ai-history-state.mjs";
 import { selectNewCompositeHistoryRecord } from "./ai-combo-prompt.mjs";
+import path from "node:path";
 
 function exactButton(scope, selector, text) {
   const escaped = text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -25,6 +26,18 @@ export function compositeSelectionValid(evidence, expectedDynamicTypes) {
   const actualNorm = Array.isArray(actual) ? actual.map(norm) : [];
   return Array.isArray(actual) && actual.length === expectedDynamicTypes.length &&
     expectedDynamicTypes.every(type => actualNorm.includes(norm(type))) && new Set(actualNorm).size === actualNorm.length;
+}
+
+export function classifyCompositeLiveGeneration({ applyModuleVisible, applyModuleEnabled, text = "" }) {
+  if (applyModuleVisible && applyModuleEnabled) return "succeeded";
+  if (/正在生成整体预览|AI正在生成|正在生成区块|生成中/.test(String(text))) return "running";
+  if (/组合操作失败|AI.{0,8}生成失败|生成失败，点数将自动退还/.test(String(text))) return "failed";
+  return "waiting";
+}
+
+export function compositePromptOnlyView({ submitted, dialogVisible, promptVisible, hasProgress, elapsedMs, graceMs = 10000 }) {
+  return submitted === true && dialogVisible === true && promptVisible === true && hasProgress !== true &&
+    Number.isFinite(elapsedMs) && elapsedMs >= graceMs;
 }
 
 export function canRetryCompositeGeneration(error, attemptNumber, maxAttempts) {
@@ -177,31 +190,155 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
   }
 
   async waitForGeneration(frame, prompt, historyCountBefore, timeoutMs, record) {
-    const result = this.resumeHistoryResult ?? await super.waitForGeneration(frame, prompt, historyCountBefore, timeoutMs, record);
-    this.resumeHistoryResult = null;
-    const current = result?.frame ?? frame;
     const mode = this.config.ai.generationModes.find(item => item.label === this.config.ai.compositeRegression.generationMode);
     if (!mode) throw new Error("组合区块生成模式未配置点数规则");
-    // Use the exact new history row for this generation's charge. A previous
-    // timed-out request can finish after its local process exits, so the live
-    // balance delta may include more than this record's charge.
-    record.combo_points_after = await this.comboPoints.read(current);
-    record.combo_balance_delta_observed = record.combo_points_before - record.combo_points_after;
-    record.combo_history_after = Number((await current.locator(this.config.selectors.aiHistoryTriggerSelector).innerText()).match(/\d+\s*$/)?.[0]?.trim());
-    if (!Number.isInteger(record.combo_history_after) || record.combo_history_after <= record.combo_history_before) throw new Error(`组合区块历史记录数未增加：${record.combo_history_before} → ${record.combo_history_after}`);
-    const match = record.combo_history_record;
-    if (!match) throw new Error("缺少按历史基线、提交时间、润色提示词、模式和点数匹配的新组合记录");
-    if (!Number.isInteger(match.points) || match.points !== mode.expectedCost) throw new Error(`历史 points badge ${match.points} 与模式成本 ${mode.expectedCost} 不符`);
-    if (!Number.isInteger(record.combo_balance_delta_observed) || record.combo_balance_delta_observed < match.points) throw new Error(`余额扣点 ${record.combo_balance_delta_observed} 小于该历史记录成本 ${match.points}`);
-    record.combo_points_charged = match.points;
-    record.combo_balance_delta_attribution = record.combo_balance_delta_observed === match.points ? "exact" : "contains additional completed generation charge(s)";
-    record.combo_actual_mode = match.mode;
-    return result;
+    const waitStarted = Date.now();
+    const deadline = waitStarted + (timeoutMs ?? this.config.ai.compositeRegression.generationTimeoutMs);
+    let lastPersist = 0;
+    let current = frame;
+    let runningObserved = record.generation_wait?.running_observed === true;
+    while (Date.now() < deadline) {
+      // The common AI block flow advances as soon as “应用模块” is enabled.
+      // The composite preview may be mounted in a different iframe than the
+      // first matching 4.0 iframe, so inspect the active view and then every
+      // frame. Do not navigate to generation history while this request runs.
+      const frames = [...new Set([frame, ...this.editor.page.frames()])];
+      let applyModule = null;
+      const frameEvidence = [];
+      for (const candidateFrame of frames) {
+        applyModule = await this.findApplyModule(candidateFrame);
+        const dialogVisible = await isVisible(candidateFrame.locator(this.config.selectors.aiDialogSelector));
+        const promptVisible = await isVisible(candidateFrame.locator(this.config.selectors.aiPromptSelector).first());
+        const exactTextCount = await candidateFrame.getByText("应用模块", { exact: true }).count().catch(() => 0);
+        const buttonLabels = await candidateFrame.locator("button, [role='button']").evaluateAll(elements =>
+          elements.map(element => (element.innerText || element.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim())
+            .filter(label => /应用模块|返回修改|重新生成/.test(label)).slice(0, 8)).catch(() => []);
+        frameEvidence.push({
+          url: candidateFrame.url(), dialog_visible: dialogVisible, prompt_visible: promptVisible,
+          apply_module_text_count: exactTextCount, apply_module_ready: Boolean(applyModule), button_labels: buttonLabels,
+        });
+        if (applyModule) {
+          current = candidateFrame;
+          break;
+        }
+      }
+      if (!applyModule) {
+        let activeDialogFrame = null;
+        for (const candidateFrame of frames) {
+          if (await isVisible(candidateFrame.locator(this.config.selectors.aiDialogSelector))) {
+            activeDialogFrame = candidateFrame;
+            break;
+          }
+        }
+        if (activeDialogFrame) current = activeDialogFrame;
+      }
+      const text = await current.locator("body").innerText().catch(() => "");
+      const hasProgress = /正在生成整体预览|AI正在生成|正在生成区块|生成中/.test(text);
+      let status = classifyCompositeLiveGeneration({
+        applyModuleVisible: Boolean(applyModule),
+        applyModuleEnabled: Boolean(applyModule),
+        text,
+      });
+      if (status === "running") runningObserved = true;
+      if (status === "failed" && !runningObserved) {
+        // On resume the dialog can retain the previous attempt's failure text.
+        // Never retry from that stale text unless this same submitted attempt
+        // was first observed running on the current page.
+        status = "waiting";
+        record.stale_failure_text_ignored_at = new Date().toISOString();
+      }
+      record.generation_wait = {
+        started_at: new Date(waitStarted).toISOString(), elapsed_ms: Date.now() - waitStarted,
+        refresh_count: 0, last_checked_at: new Date().toISOString(), last_status: status,
+        observation_source: "current-generation-page", running_observed: runningObserved,
+        frame_evidence: frameEvidence,
+      };
+      if (status === "waiting" && Date.now() - waitStarted > 10_000 && !record.generation_wait.screenshot) {
+        record.generation_wait.screenshot = path.join(path.dirname(this.config.paths.aiStateFile), "composite-current-generation-wait.png");
+        await this.editor.page.screenshot({ path: record.generation_wait.screenshot, fullPage: false }).catch(() => {});
+      }
+      if (status === "failed") {
+        const error = new Error("复合区块生成页显示平台失败");
+        error.code = "GENERATION_FAILED"; error.explicitPlatformFailure = true;
+        throw error;
+      }
+      if (status === "succeeded") {
+        record.generation_result_source = "current-generation-page";
+        record.combo_points_status = "pending";
+        const badge = await current.locator(this.config.selectors.aiHistoryTriggerSelector).innerText().catch(() => "");
+        record.combo_history_after = Number(badge.match(/\d+\s*$/)?.[0]?.trim());
+        record.combo_history_badge_delta = Number.isInteger(record.combo_history_after) && Number.isInteger(record.combo_history_before)
+          ? record.combo_history_after - record.combo_history_before : null;
+        await this.persist();
+        return { mode: "module", frame: current, control: applyModule };
+      }
+      const promptOnlyFrame = frameEvidence.find(item => item.dialog_visible && item.prompt_visible);
+      if (promptOnlyFrame && compositePromptOnlyView({
+        submitted: record.generation_submit_confirmed === true,
+        dialogVisible: true,
+        promptVisible: true,
+        hasProgress,
+        elapsedMs: Date.now() - waitStarted,
+      })) {
+        record.generation_status = "uncertain";
+        record.generation_wait.last_status = "result-view-unavailable";
+        record.generation_wait.failure_reason = "已提交生成，但当前弹窗回到了提示词页；按流程不切换到生成记录，停止等待以避免重复生成";
+        record.generation_wait.screenshot = path.join(path.dirname(this.config.paths.aiStateFile), "composite-result-view-unavailable.png");
+        await this.editor.page.screenshot({ path: record.generation_wait.screenshot, fullPage: false }).catch(() => {});
+        await this.persist();
+        const error = new Error(record.generation_wait.failure_reason);
+        error.code = "GENERATION_UNCONFIRMED";
+        throw error;
+      }
+      if (Date.now() - lastPersist >= 5_000) { await this.persist(); lastPersist = Date.now(); }
+      await this.editor.page.waitForTimeout(Math.min(750, Math.max(0, deadline - Date.now())));
+    }
+    record.generation_status = "uncertain";
+    record.generation_wait = {
+      started_at: new Date(waitStarted).toISOString(), elapsed_ms: Date.now() - waitStarted,
+      refresh_count: 0, last_checked_at: new Date().toISOString(), last_status: runningObserved ? "running" : "waiting",
+      observation_source: "current-generation-page", running_observed: runningObserved,
+    };
+    record.generation_wait.screenshot = path.join(path.dirname(this.config.paths.aiStateFile), "generation-wait-timeout.png");
+    await this.editor.page.screenshot({ path: record.generation_wait.screenshot, fullPage: false }).catch(() => {});
+    await this.persist();
+    const error = new Error(`${runningObserved ? "复合区块仍在生成" : "复合区块当前页状态未确认"}，等待超时；已留在当前生成页，未查看生成记录或重复提交`);
+    error.code = "GENERATION_UNCONFIRMED";
+    throw error;
+  }
+
+  async afterModuleClick({ frame, record }) {
+    const mode = this.config.ai.generationModes.find(item => item.label === record.generation_mode);
+    if (!mode || !Number.isInteger(record.combo_points_before)) {
+      record.combo_points_status = "unconfirmed";
+      record.combo_points_failure_reason = "缺少生成前点数或模式成本配置";
+      await this.persist();
+      return;
+    }
+    // Advance the shared UI flow immediately when “应用模块” becomes ready.
+    // Balance polling happens after that click so it cannot hold the user on
+    // the generated preview page.
+    record.combo_points_status = "unconfirmed";
+    await this.persist();
+    try {
+      record.combo_points_after = await this.comboPoints.waitForCharge(frame, record.combo_points_before, mode.expectedCost, {
+        timeoutMs: this.config.ai.compositeRegression.pointsWaitTimeoutMs ?? 30_000,
+        intervalMs: this.config.ai.compositeRegression.pointsPollIntervalMs ?? 3_000,
+      });
+      record.combo_balance_delta_observed = record.combo_points_before - record.combo_points_after;
+      record.combo_points_charged = record.combo_balance_delta_observed;
+      record.combo_points_status = record.combo_points_charged === mode.expectedCost ? "passed" : "failed";
+      record.combo_points_failure_reason = record.combo_points_status === "passed" ? "" : `预期扣除 ${mode.expectedCost} 点，实际扣除 ${record.combo_points_charged} 点`;
+    } catch (error) {
+      record.combo_points_status = "unconfirmed";
+      record.combo_points_failure_reason = error.message;
+    }
+    await this.persist();
   }
 
   canResumeSubmittedGeneration(record) {
     return record?.type === this.config.ai.compositeRegression.type &&
-      (["uncertain", "succeeded"].includes(record.generation_status) ||
+      (["running", "uncertain", "succeeded"].includes(record.generation_status) ||
         // A test-side wait/refresh error (e.g. an editor overlay blocking a
         // click) is not a platform result; the submitted row may be complete.
         (record.generation_status === "failed" && record.generation_attempts?.at(-1)?.explicit_platform_failure !== true)) &&
@@ -211,89 +348,14 @@ export class AiCompositeRegressionAutomation extends AiPagedAutomation {
   }
 
   async resumeSubmittedGeneration(record) {
-    const frame = await this.openAiDialog();
-    const history = frame.locator(this.config.selectors.aiHistoryTriggerSelector).first();
-    const cards = frame.locator(this.config.selectors.aiHistoryCardSelector);
-    if (!await cards.first().isVisible().catch(() => false)) {
-      if (!await history.isVisible().catch(() => false)) throw new Error("复合区块生成已提交，但无法打开本轮生成记录");
-      await history.click();
+    // Resume by reopening the same generation view and observing its live
+    // result. Deliberately do not navigate to the generation-history panel.
+    if (!record.generation_submit_confirmed) throw new Error("复合区块没有提交确认，拒绝恢复到当前生成页");
+    this.resumeHistoryResult = null;
+    for (const currentFrame of this.editor.page.frames()) {
+      if (await isVisible(currentFrame.locator(this.config.selectors.aiDialogSelector))) return currentFrame;
     }
-    const deadline = Date.now() + this.config.timeouts.blockRenderMs;
-    const needle = String(record.generation_prompt || "").trim().replace(/\s+/g, " ");
-    while (Date.now() < deadline) {
-      const matches = [];
-      for (let index = 0; index < await cards.count().catch(() => 0); index += 1) {
-        const card = cards.nth(index);
-        const text = await card.innerText().catch(() => "");
-        const normalizedText = text.replace(/\s+/g, " ");
-        if (needle && normalizedText.includes(needle)) matches.push({ card, text });
-      }
-      if (matches.length === 1) {
-        const { card, text } = matches[0];
-        let parsed = null;
-        try { parsed = parseGenerationHistoryRecord(text,
-          await card.getAttribute("data-id").catch(() => "") || await card.getAttribute("data-record-id").catch(() => "")); } catch { /* Keep polling incomplete cards. */ }
-        if (parsed?.status === "completed") {
-          const mode = this.config.ai.generationModes.find(item => item.label === record.generation_mode);
-          const submitted = Date.parse(record.generation_submitted_at);
-          const polished = String(record.polished_prompt || "").replace(/\s+/g, " ").trim();
-          if (!mode || !Number.isFinite(submitted) || parsed.epoch_ms < submitted - 60_000 ||
-              !String(parsed.block_type).includes("组合区块") || parsed.mode !== mode.key || parsed.points !== mode.expectedCost ||
-              !String(parsed.prompt).replace(/\s+/g, " ").includes(polished)) throw new Error("恢复到的完成历史记录与本轮提示词/模式/成本不符");
-          const insert = await firstVisible([
-            card.getByText(/插入|应用模块/),
-            card.locator("button").filter({ hasText: /插入|应用模块/ }),
-          ]);
-          if (insert && await insert.isEnabled().catch(() => false)) {
-            record.combo_history_record = parsed; record.generation_record_id = parsed.id || "";
-            record.last_record_status = parsed.status; this.resumeHistoryResult = { mode: "history", frame, control: insert, recordId: parsed.id || "" };
-            await this.persist(); return frame;
-          }
-        }
-        if (/组合操作失败，已保留可恢复进度/.test(text)) {
-          const continueButton = card.getByRole('button', { name: '继续生成', exact: true });
-          if (!await continueButton.isVisible().catch(() => false) || !await continueButton.isEnabled().catch(() => false)) {
-            const error = new Error("AI 复合区块存在可恢复失败，但未找到可用的继续生成按钮");
-            error.code = "GENERATION_FAILED"; error.explicitPlatformFailure = true;
-            error.record_id = await card.getAttribute("data-id").catch(() => "") || await card.getAttribute("data-record-id").catch(() => "") || "";
-            throw error;
-          }
-          record.continuation_attempts ??= [];
-          const maxContinuations = this.config.ai.compositeRegression.maxContinuations ?? 1;
-          if (!canContinueCompositeHistory(record, maxContinuations)) {
-            const error = new Error(`继续生成已达到 ${maxContinuations} 次上限，保留失败记录供人工恢复`);
-            error.code = 'GENERATION_FAILED'; error.explicitPlatformFailure = true; throw error;
-          }
-          const continuation = { started_at: new Date().toISOString(), clicked: false, result_visible: false, terminal_status: '' };
-          record.continuation_attempts.push(continuation); await this.persist();
-          await continueButton.click(); continuation.clicked = true;
-          continuation.loading_observed = await continueButton.isDisabled().catch(() => false); await this.persist();
-          const deadline = Date.now() + (this.config.ai.compositeRegression.generationTimeoutMs ?? this.config.timeouts.blockRenderMs);
-          while (Date.now() < deadline) {
-            const result = frame.locator('button').filter({ hasText: /^应用(?:模块|区块)$/ }).first();
-            if (await result.isVisible().catch(() => false) && await result.isEnabled().catch(() => false)) {
-              continuation.result_visible = true; continuation.terminal_status = 'result-visible'; continuation.finished_at = new Date().toISOString();
-              await this.persist(); return frame;
-            }
-            const currentText = (await card.innerText().catch(() => '')).replace(/\s+/g, ' ');
-            const disabled = await continueButton.isDisabled().catch(() => false);
-            if (disabled) continuation.loading_observed = true;
-            if (continuation.loading_observed && !disabled && /组合操作失败，已保留可恢复进度/.test(currentText)) {
-              continuation.terminal_status = 'failed-again'; continuation.finished_at = new Date().toISOString(); await this.persist();
-              const error = new Error('继续生成后仍返回组合操作失败'); error.code = 'GENERATION_FAILED'; error.explicitPlatformFailure = true;
-              error.record_id = await card.getAttribute('data-id').catch(() => '') || ''; throw error;
-            }
-            await this.editor.page.waitForTimeout(500);
-          }
-          continuation.terminal_status = 'uncertain'; continuation.finished_at = new Date().toISOString(); await this.persist();
-          const error = new Error('组合区块继续生成等待超时，拒绝重复提交'); error.code = 'GENERATION_UNCONFIRMED'; throw error;
-        }
-        return frame;
-      }
-      if (matches.length > 1) throw new Error("复合区块生成记录匹配不唯一，拒绝继续生成");
-      await this.editor.page.waitForTimeout(250);
-    }
-    throw new Error("未找到本轮复合区块生成记录，拒绝重新提交生成");
+    return this.openAiDialog();
   }
 
   async generateAndApply(record) {

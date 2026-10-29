@@ -95,7 +95,9 @@
     "ai:combo": "node src/ai-combo-cli.mjs run --apply",
     "ai:combo:resume": "node src/ai-combo-cli.mjs resume --apply",
     "ai:combo:status": "node src/ai-combo-cli.mjs status",
-    "ai:combo:cleanup": "node src/ai-combo-cli.mjs cleanup --apply"
+    "ai:combo:cleanup": "node src/ai-combo-cli.mjs cleanup --apply",
+    "ai:combo:linkage": "node src/ai-combo-linkage-cli.mjs --apply",
+    "ai:combo:linkage:report": "node src/combo-linkage-report.mjs"
   },
   "engines": {
     "node": ">=20"

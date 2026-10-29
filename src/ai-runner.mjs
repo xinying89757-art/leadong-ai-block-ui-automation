@@ -9,6 +9,7 @@ import {
   markTypeFailed,
   markTypeGenerated,
   markTypePolishFailed,
+  markTypePolishSkipped,
   markTypePolishStarted,
   markTypePolished,
   markTypeStarted,
@@ -378,7 +379,11 @@ export class AiBlockAutomation {
   }
 
   async polishPrompt(frame, record, prompt) {
-    if (!this.aiConfig.promptPolishEnabled) return record.prompt;
+    if (!this.aiConfig.promptPolishEnabled) {
+      markTypePolishSkipped(record);
+      await this.persist();
+      return record.prompt;
+    }
     markTypePolishStarted(record);
     await this.persist();
     try {
@@ -409,6 +414,25 @@ export class AiBlockAutomation {
     }
   }
 
+  async findApplyModule(frame) {
+    const candidates = [];
+    if (typeof frame.getByRole === "function") candidates.push(frame.getByRole("button", { name: /应用模块/ }));
+    if (typeof frame.locator === "function") {
+      const buttons = frame.locator("button, [role='button']");
+      if (typeof buttons.filter === "function") candidates.push(buttons.filter({ hasText: /应用模块/ }));
+    }
+    if (typeof frame.getByText === "function") candidates.push(frame.getByText("应用模块", { exact: true }));
+    for (const locator of candidates) {
+      const count = typeof locator.count === "function" ? await locator.count().catch(() => 0) : 1;
+      for (let index = 0; index < count; index += 1) {
+        const control = typeof locator.nth === "function" ? locator.nth(index) :
+          (typeof locator.first === "function" ? locator.first() : locator);
+        if (await visible(control) && await control.isEnabled().catch(() => false)) return control;
+      }
+    }
+    return null;
+  }
+
   async waitForGeneration(frame, prompt, historyCountBefore = 0, timeoutMs = this.aiConfig.generationTimeoutMs ?? 180000, record = null) {
     const waitStarted = Date.now();
     const deadline = waitStarted + timeoutMs;
@@ -416,10 +440,7 @@ export class AiBlockAutomation {
     let nextRefresh = waitStarted + refreshMs, refreshCount = 0;
     const metadata = record ?? {};
     const inspect = async () => {
-      const applyModule = await firstVisible([
-        exactText(frame, "应用模块"),
-        frame.locator("button").filter({ hasText: "应用模块" }).first(),
-      ]);
+      const applyModule = await this.findApplyModule(frame);
       if (record?.type !== "复合区块" && refreshCount === 0 && applyModule && await applyModule.isEnabled().catch(() => false)) return { mode: "module", control: applyModule, frame };
       const cards = frame.locator(this.config.selectors.aiHistoryCardSelector);
       const cardCount = await cards.count().catch(() => 0);
@@ -648,6 +669,7 @@ export class AiBlockAutomation {
       }, this.config.timeouts.blockRenderMs, 250, "AI 历史记录插入");
       if (next.mode === "module") await next.control.click({ force: true });
     }
+    await this.afterModuleClick({ frame, record, result });
     markTypeGenerated(record);
     await this.persist();
 
@@ -708,6 +730,8 @@ export class AiBlockAutomation {
 
   // Specialized flows can configure the freshly committed 3.0 block before
   // the temporary AI dialog is closed. The default flow has no extra step.
+  async afterModuleClick() {}
+
   async afterFinalApply() {}
 
   async confirmApplicationCommit() {}

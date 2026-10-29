@@ -296,8 +296,8 @@
         "产品分类"
       ],
       "inputMode": "文字描述",
-      "generationMode": "深度模式",
-      "promptPolishEnabled": true,
+      "generationMode": "快速模式",
+      "promptPolishEnabled": false,
       "maxGenerationAttempts": 10,
       "productCategoryRegression": {
         "enabled": true,
@@ -315,7 +315,7 @@
       "publishInitialWaitMs": 15000,
       "publishPollIntervalMs": 3000,
       "publishTimeoutMs": 60000,
-      "prompt": "Create one cohesive English solar company composite block. Use the selected static image-and-text layout as a hero introduction, then include the selected product list and product category sections in a clear responsive composition. Use real product imagery and concise English content. Make the result readable on desktop and mobile."
+      "prompt": "产品列表+产品分类"
     },
     "promptPolishEnabled": true,
     "aiPolishSelector": "button.ai-polish-button",

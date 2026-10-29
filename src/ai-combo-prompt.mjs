@@ -1,11 +1,11 @@
 const definitions = {
-  product_pair: { types: ["产品列表", "产品分类"], prompt: "产品列表和产品分类" },
-  article_pair: { types: ["文章列表", "文章分类"], prompt: "文章列表和文章分类" },
-  three_type: { types: ["产品列表", "产品分类", "文章列表"], prompt: "产品列表、产品分类和文章列表" },
-  video_pair: { types: ["视频列表", "视频分类"], prompt: "视频列表和视频分类" },
-  gallery_pair: { types: ["图册列表", "图册分类"], prompt: "图册列表和图册分类" },
-  download_pair: { types: ["下载列表", "下载分类"], prompt: "下载列表和下载分类" },
-  faq_pair: { types: ["FAQ 列表", "FAQ 分类"], prompt: "FAQ列表和FAQ分类" },
+  product_pair: { types: ["产品列表", "产品分类"], prompt: "产品列表+产品分类" },
+  article_pair: { types: ["文章列表", "文章分类"], prompt: "文章列表+文章分类" },
+  three_type: { types: ["产品列表", "产品分类", "文章列表"], prompt: "产品列表+产品分类+文章列表" },
+  video_pair: { types: ["视频列表", "视频分类"], prompt: "视频列表+视频分类" },
+  gallery_pair: { types: ["图册列表", "图册分类"], prompt: "图册列表+图册分类" },
+  download_pair: { types: ["下载列表", "下载分类"], prompt: "下载列表+下载分类" },
+  faq_pair: { types: ["FAQ 列表", "FAQ 分类"], prompt: "FAQ 列表+FAQ 分类" },
 };
 
 const CATEGORY_PATTERN = /categor(y|ies)|classif|sort|cate/i;
